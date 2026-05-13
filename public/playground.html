@@ -1,0 +1,3791 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown+ Playground</title>
+<style>
+/* ============================================================
+   Markdown+ Site — Light theme, saturated indigo nav.
+   Stage 0 baseline: design tokens, base styles, marketing components.
+   ============================================================ */
+
+/* ---- Design tokens ---- */
+:root {
+  /* Neutrals */
+  --bg:            #ffffff;
+  --bg-subtle:     #fafafa;
+  --surface:       #ffffff;
+  --surface-2:     #f1f5f9;
+  --surface-3:     #e2e8f0;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Text */
+  --text:          #0f172a;
+  --text-muted:    #475569;
+  --text-faint:    #94a3b8;
+
+  /* Accent — saturated indigo */
+  --accent:        #4f46e5;        /* indigo-600,  body / button bg */
+  --accent-deep:   #4338ca;        /* indigo-700,  nav bg */
+  --accent-hover:  #3730a3;        /* indigo-800 */
+  --accent-soft:   #eef2ff;        /* indigo-50,  tint surface */
+  --accent-on:     #ffffff;        /* text on accent */
+
+  /* Secondary accent — cyan for "+" and code highlights */
+  --accent-2:      #0891b2;        /* cyan-600 */
+  --accent-2-soft: #ecfeff;        /* cyan-50 */
+
+  /* Semantic */
+  --ok:            #16a34a;
+  --ok-soft:       #dcfce7;
+  --warn:          #d97706;
+  --warn-soft:     #fef3c7;
+  --err:           #dc2626;
+  --err-soft:      #fee2e2;
+
+  /* Code surface (always dark for legibility) */
+  --code-bg:       #0f172a;
+  --code-text:     #e2e8f0;
+  --code-muted:    #94a3b8;
+  --code-keyword:  #c4b5fd;
+  --code-string:   #86efac;
+  --code-comment:  #64748b;
+
+  /* Typography */
+  --font-sans: "Inter", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", "SF Mono", ui-monospace, Menlo,
+               Consolas, monospace;
+
+  /* Spacing scale (4-base) */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --sp-8:  64px;
+
+  /* Radius */
+  --r-sm:  4px;
+  --r-md:  8px;
+  --r-lg:  12px;
+  --r-xl:  16px;
+  --r-full: 999px;
+
+  /* Shadow */
+  --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --sh-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --sh-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --sh-accent: 0 4px 12px rgba(79, 70, 229, 0.25);
+
+  /* Motion */
+  --t-fast: 120ms ease-out;
+  --t-slow: 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---- Reset & Base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration: none; transition: color var(--t-fast); }
+a:hover { color: var(--accent-hover); }
+img { max-width: 100%; height: auto; }
+::selection { background: var(--accent-soft); color: var(--accent-deep); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ---- Nav (the signature element) ---- */
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--accent-deep);
+  color: var(--accent-on);
+  box-shadow: var(--sh-md);
+}
+.site-nav-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-5);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+.site-logo {
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--accent-on);
+  text-decoration: none;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.site-logo span {
+  color: #fbbf24;       /* amber-400, contrasts beautifully with indigo */
+  font-size: 24px;
+  line-height: 1;
+}
+.site-nav-links {
+  display: flex;
+  gap: var(--sp-2);
+  margin-left: auto;
+  font-size: 14px;
+}
+.site-nav-links a {
+  color: rgba(255, 255, 255, 0.78);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.site-nav-links a:hover {
+  color: var(--accent-on);
+  background: rgba(255, 255, 255, 0.1);
+}
+.site-nav-links a.active {
+  color: var(--accent-on);
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+}
+
+/* ---- Main containers ---- */
+main.site-main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5) var(--sp-8);
+}
+main.site-main.wide { max-width: 1320px; }
+main.site-main.bleed { max-width: none; padding: var(--sp-5); }
+
+/* ---- Hero ---- */
+.site-hero {
+  padding: var(--sp-8) 0 var(--sp-6);
+  text-align: center;
+}
+.site-hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 1.05;
+  margin: 0 0 var(--sp-4);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.site-hero h1 .accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.site-hero .lead {
+  font-size: 18px;
+  color: var(--text-muted);
+  max-width: 680px;
+  margin: 0 auto var(--sp-6);
+  line-height: 1.65;
+}
+.site-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---- Sections ---- */
+.site-section {
+  margin: var(--sp-7) 0;
+}
+.site-section h2 {
+  font-size: 30px;
+  margin: 0 0 var(--sp-3);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.site-section h3 {
+  font-size: 20px;
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+}
+.site-section p { margin: var(--sp-3) 0; }
+.site-section ul, .site-section ol { margin: var(--sp-3) 0; padding-left: 24px; }
+.site-section li { margin: var(--sp-2) 0; }
+
+/* ---- Buttons ---- */
+.site-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: var(--r-md);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+}
+.site-btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-on);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-accent);
+}
+.site-btn:active { transform: translateY(0); }
+.site-btn.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.site-btn.secondary:hover {
+  background: var(--surface-2);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+.site-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-deep);
+}
+.site-btn.ghost:hover { background: var(--accent-soft); box-shadow: none; }
+
+/* ---- Pillars (3-up cards on landing) ---- */
+.site-pillars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+}
+.site-pillar {
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.site-pillar:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+  border-color: var(--accent);
+}
+.site-pillar h3 {
+  font-size: 16px;
+  margin: 0 0 var(--sp-2);
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+.site-pillar p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ---- Code blocks ---- */
+pre.site-code {
+  font-family: var(--font-mono);
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: var(--sp-4) 0;
+  position: relative;
+  border: 1px solid #1e293b;
+}
+pre.site-code code { color: inherit; background: transparent; }
+code.site-code-inline {
+  font-family: var(--font-mono);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  font-size: 0.88em;
+  border: 1px solid transparent;
+}
+
+/* ---- Tables ---- */
+table.site-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: var(--sp-4) 0;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+table.site-table th, table.site-table td {
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+table.site-table thead th {
+  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border-strong);
+}
+table.site-table tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+table.site-table tbody tr:last-child td { border-bottom: none; }
+table.site-table tbody tr:hover td { background: var(--accent-soft); }
+
+/* ---- Footer ---- */
+footer.site-footer {
+  border-top: 1px solid var(--border);
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: var(--bg-subtle);
+}
+footer.site-footer .footer-mark {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+/* ---- Tutorial step badges ---- */
+.tutorial-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: var(--sp-2);
+  vertical-align: middle;
+}
+
+/* ---- Section bands (break up vertical stack) ---- */
+.band {
+  width: 100%;
+  padding: var(--sp-8) 0;
+}
+.band-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--sp-5);
+}
+.band-tight .band-inner { max-width: 880px; }
+.band-tinted {
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg-subtle) 100%);
+}
+.band-dotted {
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(67, 56, 202, 0.10) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.band-dark {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.35) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(8, 145, 178, 0.30) 0%, transparent 50%),
+    linear-gradient(180deg, #1e1b4b 0%, #0f172a 100%);
+  color: #e2e8f0;
+}
+.band-dark h2, .band-dark h3 { color: #ffffff; }
+.band-dark p { color: rgba(226, 232, 240, 0.8); }
+.band-dark a { color: #c4b5fd; }
+.band-dark code.site-code-inline {
+  background: rgba(255, 255, 255, 0.1);
+  color: #c4b5fd;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.band-accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: var(--accent-on);
+  text-align: center;
+  padding: var(--sp-7) 0;
+}
+.band-accent h2 { color: var(--accent-on); }
+.band-accent p { color: rgba(255, 255, 255, 0.85); }
+.band-accent .site-btn {
+  background: var(--accent-on);
+  color: var(--accent-deep);
+  border-color: var(--accent-on);
+}
+.band-accent .site-btn:hover {
+  background: #f5f3ff;
+  color: var(--accent-deep);
+  border-color: #f5f3ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* ---- Hero 2-col ---- */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: var(--sp-7);
+  align-items: center;
+  padding: var(--sp-7) 0 var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 960px) {
+  .hero-grid { grid-template-columns: 1fr; gap: var(--sp-5); padding: var(--sp-6) var(--sp-4); }
+}
+.hero-grid .hero-text { padding: 0 var(--sp-5); }
+.hero-grid h1 {
+  font-size: clamp(34px, 4.5vw, 52px);
+  line-height: 1.05;
+  margin: 0 0 var(--sp-4);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.hero-grid h1 .accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-grid .lead {
+  font-size: 17px;
+  color: var(--text-muted);
+  margin: 0 0 var(--sp-5);
+  line-height: 1.7;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--sp-3);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+.hero-tag .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+}
+
+/* ---- Mock browser window (hero visual) ---- */
+.mock-window {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  font-size: 12px;
+  transform: rotate(-1deg);
+  transition: transform var(--t-slow);
+  position: relative;
+}
+.mock-window:hover { transform: rotate(0) translateY(-2px); }
+.mock-window::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.25), transparent 70%);
+  pointer-events: none;
+}
+.mock-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.mock-chrome .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+}
+.mock-chrome .dot:nth-child(1) { background: #f87171; }
+.mock-chrome .dot:nth-child(2) { background: #fbbf24; }
+.mock-chrome .dot:nth-child(3) { background: #4ade80; }
+.mock-chrome .url {
+  margin-left: var(--sp-3);
+  padding: 3px 10px;
+  background: var(--surface);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  flex: 1;
+  max-width: 240px;
+}
+.mock-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 280px;
+}
+.mock-source {
+  padding: var(--sp-3);
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.75;
+  overflow: hidden;
+}
+.mock-source .kw { color: #c4b5fd; }
+.mock-source .meta { color: #67e8f9; }
+.mock-source .com { color: #94a3b8; }
+.mock-source .str { color: #86efac; }
+.mock-preview {
+  padding: var(--sp-3);
+  background: var(--surface);
+  font-size: 11px;
+  line-height: 1.6;
+  border-left: 1px solid var(--border);
+}
+.mock-preview .mock-block {
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--sp-2);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+.mock-preview .mock-block-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mock-preview .mock-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 9px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mock-preview .mock-pill.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.mock-preview .mock-pill.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.mock-preview .mock-kpi {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.mock-preview .mock-kpi-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mock-preview .mock-text {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---- 2-col compare ---- */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+}
+@media (max-width: 720px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
+.compare-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  box-shadow: var(--sh-sm);
+}
+.compare-card h3 {
+  margin: 0 0 var(--sp-3);
+  font-size: 18px;
+  color: var(--accent-deep);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.compare-card .label {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.compare-card .label.bad {
+  background: var(--err-soft);
+  color: var(--err);
+}
+.compare-card .label.good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.compare-card.bad-card { border-left: 4px solid var(--err); }
+.compare-card.good-card { border-left: 4px solid var(--ok); }
+
+/* ---- Feature grid (2x3) ---- */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 720px) {
+  .feature-grid { grid-template-columns: 1fr; }
+}
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.feature-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-md);
+  border-color: var(--accent);
+}
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  margin-bottom: var(--sp-3);
+}
+.feature-card h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+.feature-card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ---- Side-by-side example block ---- */
+.example-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 720px) {
+  .example-split { grid-template-columns: 1fr; }
+}
+.example-split > * { min-width: 0; }
+.example-split .example-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-2);
+}
+
+/* ---- Docs layout (sidebar + content) ---- */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--sp-6);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-8);
+}
+@media (max-width: 960px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+    padding: var(--sp-4);
+  }
+  .docs-sidebar { position: static !important; }
+}
+.docs-sidebar {
+  position: sticky;
+  top: calc(56px + var(--sp-4));
+  align-self: start;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.docs-sidebar h4 {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--sp-2);
+  font-weight: 700;
+}
+.docs-sidebar ol {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--sp-4);
+}
+.docs-sidebar li { margin: 2px 0; }
+.docs-sidebar a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.docs-sidebar a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.docs-sidebar a.active {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.docs-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-6) var(--sp-7);
+  box-shadow: var(--sh-sm);
+}
+.docs-content h2:first-child { margin-top: 0; }
+.docs-content h2 {
+  font-size: 28px;
+  margin: var(--sp-6) 0 var(--sp-3);
+  padding-top: var(--sp-3);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  scroll-margin-top: 80px;
+}
+.docs-content h3 {
+  font-size: 18px;
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+  scroll-margin-top: 80px;
+}
+.docs-content > p:first-of-type { margin-top: 0; }
+.docs-content section { padding-top: var(--sp-2); }
+.docs-content section + section { margin-top: var(--sp-5); border-top: 1px dashed var(--border); padding-top: var(--sp-5); }
+
+/* ---- Tutorial step card ---- */
+.step-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  margin: var(--sp-4) 0;
+  box-shadow: var(--sh-sm);
+  position: relative;
+}
+.step-card .step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.step-card h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 720px) {
+  .site-nav-inner { padding: var(--sp-3); gap: var(--sp-3); }
+  .site-nav-links { gap: 0; font-size: 13px; }
+  .site-hero { padding: var(--sp-6) 0 var(--sp-5); }
+  .site-section { margin: var(--sp-6) 0; }
+  .band { padding: var(--sp-6) 0; }
+}
+
+</style>
+<style>
+/* ============================================================
+   Markdown+ Playground — light mode IDE-style.
+   Layered on top of site.css. Imports tokens from :root.
+   ============================================================ */
+
+/* Body class targets — page-specific overrides */
+body.page-playground {
+  background: var(--bg-subtle);
+}
+
+/* Playground top-level layout */
+.pg-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 56px);  /* full minus nav */
+}
+
+/* ---- Sub-header (segmented tabs + sample picker + global status) ---- */
+.pg-subheader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.pg-segmented {
+  display: inline-flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 3px;
+  gap: 2px;
+}
+.pg-segmented button {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 7px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.pg-segmented button:hover { color: var(--text); }
+.pg-segmented button.active {
+  background: var(--surface);
+  color: var(--accent-deep);
+  font-weight: 600;
+  box-shadow: var(--sh-sm);
+}
+.pg-sub-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-left: auto;
+}
+.pg-sample-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--t-fast);
+}
+.pg-sample-picker:hover { border-color: var(--accent); color: var(--accent-deep); }
+.pg-sample-picker .picker-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+}
+
+/* Global status pill */
+.pg-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+}
+.pg-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: currentColor;
+}
+.pg-status.ok {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: rgba(22, 163, 74, 0.3);
+}
+.pg-status.warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: rgba(217, 119, 6, 0.3);
+}
+.pg-status.err {
+  color: var(--err);
+  background: var(--err-soft);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+/* ---- Editor split layout ---- */
+.pg-panel { display: none; flex: 1 1 auto; }
+.pg-panel.active { display: flex; flex-direction: column; }
+
+.pg-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  flex: 1 1 auto;
+  min-height: calc(100vh - 220px);
+}
+
+@media (max-width: 980px) {
+  .pg-split { grid-template-columns: 1fr; }
+}
+
+.pg-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--sh-sm);
+}
+
+/* ---- Pane fullscreen toggle button + state ---- */
+.pg-pane-fs-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.pg-pane-fs-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+}
+.pg-pane-fs-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.pg-pane-fs-btn .fs-collapse { display: none; }
+.is-fullscreen .pg-pane-fs-btn .fs-expand { display: none; }
+.is-fullscreen .pg-pane-fs-btn .fs-collapse { display: inline; }
+.is-fullscreen > .pg-pane-head .pg-pane-fs-btn,
+.pg-pane.is-fullscreen .pg-pane-fs-btn,
+.pg-rewriter-pane.is-fullscreen .pg-pane-fs-btn {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-color: var(--accent);
+}
+
+.pg-pane.is-fullscreen,
+.pg-rewriter-pane.is-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  max-height: none !important;
+}
+.pg-pane.is-fullscreen > .pg-pane-head,
+.pg-rewriter-pane.is-fullscreen > .pg-pane-head {
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-soft);
+}
+.pg-pane.is-fullscreen .pg-editor,
+.pg-pane.is-fullscreen .pg-preview,
+.pg-rewriter-pane.is-fullscreen textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* Hide page-level scrollbar while a pane is fullscreen */
+body.has-fullscreen-pane { overflow: hidden; }
+
+/* ---- Pane head — IDE-style file tab on the left ---- */
+.pg-pane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  min-height: 42px;
+}
+.pg-file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  position: relative;
+  bottom: -1px;
+  border-bottom-color: var(--surface);
+}
+.pg-file-tab::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+.pg-pane-head-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 12px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+/* ---- Browser-chrome pane head for preview ---- */
+.pg-browser-chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pg-browser-chrome .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-full);
+}
+.pg-browser-chrome .dot.red    { background: #f87171; }
+.pg-browser-chrome .dot.yellow { background: #fbbf24; }
+.pg-browser-chrome .dot.green  { background: #4ade80; }
+.pg-url-bar {
+  margin-left: var(--sp-3);
+  padding: 4px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  min-width: 240px;
+}
+
+/* ---- Editor textarea ---- */
+.pg-editor {
+  flex: 1 1 auto;
+  border: none;
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  resize: none;
+  outline: none;
+  overflow: auto;
+  /* Subtle horizontal gridlines for visual rhythm */
+  background-image:
+    linear-gradient(to right, rgba(79, 70, 229, 0.08) 0, rgba(79, 70, 229, 0.08) 1px, transparent 1px, transparent 100%);
+  background-size: 100% 22.75px;
+  background-position: 0 var(--sp-4);
+  caret-color: var(--accent);
+  tab-size: 2;
+}
+.pg-editor:focus { background-color: var(--surface); }
+
+/* ---- Preview pane body ---- */
+.pg-preview {
+  flex: 1 1 auto;
+  overflow: auto;
+  background: var(--bg);
+  padding: 0;
+}
+/* Tighten the viewer chrome inside the playground preview */
+.pg-preview .mdp-layout {
+  padding: 0;
+  max-width: none;
+  gap: 0;
+  grid-template-columns: 1fr;
+}
+.pg-preview .mdp-main { padding: var(--sp-4); }
+.pg-preview .mdp-doc-header h1 { font-size: 24px; }
+
+/* Sidebar TOC → horizontal sticky chip bar at preview top */
+.pg-preview .mdp-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: stretch;
+  max-height: none;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  z-index: 2;
+  overflow-x: auto;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.pg-preview .mdp-sidebar .mdp-sidebar-title {
+  margin: 0;
+  flex-shrink: 0;
+  color: var(--accent-deep);
+}
+.pg-preview .mdp-sidebar .mdp-toc {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+}
+.pg-preview .mdp-sidebar .mdp-toc li {
+  display: inline-block;
+  margin: 0;
+}
+.pg-preview .mdp-sidebar .mdp-toc a {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.pg-preview .mdp-sidebar .mdp-toc a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+}
+.pg-preview .mdp-sidebar .mdp-toc a.mdp-toc-active {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Inline (nested) TOC inside a parent block — flat */
+.pg-preview .mdp-toc-inline {
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: 0;
+  padding: var(--sp-2) var(--sp-3);
+  margin: var(--sp-3) 0;
+}
+.pg-preview .mdp-toc-inline ul {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pg-preview .mdp-toc-inline a {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.pg-preview .mdp-toc-inline a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+}
+
+/* ---- Issue drawer (bottom) ---- */
+.pg-drawer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  max-height: 240px;
+  overflow: hidden;
+  transition: max-height var(--t-slow);
+}
+.pg-drawer.collapsed { max-height: 38px; }
+.pg-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 8px var(--sp-5);
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--t-fast);
+}
+.pg-drawer:not(.collapsed) .pg-drawer-head { border-bottom-color: var(--border); }
+.pg-drawer-head .chev {
+  display: inline-block;
+  transition: transform var(--t-fast);
+}
+.pg-drawer.collapsed .pg-drawer-head .chev { transform: rotate(-90deg); }
+.pg-drawer-body {
+  padding: var(--sp-3) var(--sp-5);
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.pg-issue {
+  display: grid;
+  grid-template-columns: 60px 70px 1fr;
+  gap: var(--sp-2);
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  margin-bottom: 2px;
+}
+.pg-issue:hover { background: var(--surface-2); }
+.pg-issue.err { color: var(--err); }
+.pg-issue.warn { color: var(--warn); }
+.pg-issue .lineno {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pg-issue .code-id {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: currentColor;
+  color: var(--surface) !important;
+  align-self: start;
+  letter-spacing: 0.05em;
+}
+
+/* ---- Rewriter panel ---- */
+.pg-rewriter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  flex: 1 1 auto;
+  min-height: 480px;
+}
+@media (max-width: 980px) {
+  .pg-rewriter { grid-template-columns: 1fr; }
+  .pg-rewriter-arrow { transform: rotate(90deg); margin: var(--sp-3) auto; }
+}
+.pg-rewriter-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--sh-sm);
+}
+.pg-rewriter-pane textarea {
+  flex: 1 1 auto;
+  border: none;
+  padding: var(--sp-4);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  resize: none;
+  outline: none;
+  min-height: 360px;
+}
+.pg-rewriter-pane textarea::placeholder { color: var(--text-faint); }
+.pg-rewriter-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: var(--accent);
+  font-weight: 300;
+}
+
+.pg-rewriter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5) 0;
+}
+.pg-rewriter-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.pg-rewriter-controls select,
+.pg-rewriter-controls input[type="text"] {
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+.pg-rewriter-controls input[type="text"] { width: 320px; max-width: 100%; }
+.pg-rewriter-controls input[type="text"]:focus,
+.pg-rewriter-controls select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
+
+.pg-rewriter-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ---- Hint footer ---- */
+.pg-hint {
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--accent-soft);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--accent-deep);
+  line-height: 1.65;
+}
+.pg-hint code {
+  font-family: var(--font-mono);
+  background: var(--surface);
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--accent-deep);
+  border: 1px solid var(--border);
+}
+
+</style>
+<style>
+/* ============================================================
+   Markdown+ Viewer — shared stylesheet
+   Goal: minimal, semantic, no framework. Works in both the CLI
+   single-file output and the website playground.
+   ============================================================ */
+
+:root {
+  --mdp-bg: #fafafa;
+  --mdp-surface: #ffffff;
+  --mdp-text: #1a1a1a;
+  --mdp-muted: #6b7280;
+  --mdp-border: #e5e7eb;
+  --mdp-border-strong: #9ca3af;
+  --mdp-accent: #2563eb;
+  --mdp-link: #1d4ed8;
+
+  --mdp-status-active: #16a34a;
+  --mdp-status-accepted: #16a34a;
+  --mdp-status-on-track: #16a34a;
+  --mdp-status-done: #16a34a;
+  --mdp-status-healthy: #16a34a;
+  --mdp-status-exceeded: #16a34a;
+
+  --mdp-status-draft: #9ca3af;
+  --mdp-status-proposed: #6366f1;
+  --mdp-status-open: #2563eb;
+
+  --mdp-status-behind: #d97706;
+  --mdp-status-degraded: #d97706;
+  --mdp-status-blocked: #d97706;
+
+  --mdp-status-rejected: #dc2626;
+  --mdp-status-deprecated: #6b7280;
+  --mdp-status-superseded: #6b7280;
+  --mdp-status-archive: #9ca3af;
+  --mdp-status-closed: #9ca3af;
+  --mdp-status-down: #dc2626;
+
+  --mdp-zone-red: #fca5a5;
+  --mdp-zone-amber: #fcd34d;
+  --mdp-zone-green: #86efac;
+
+  --mdp-callout-note: #2563eb;
+  --mdp-callout-tip: #16a34a;
+  --mdp-callout-important: #7c3aed;
+  --mdp-callout-warning: #d97706;
+  --mdp-callout-caution: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mdp-bg: #0f1115;
+    --mdp-surface: #181b22;
+    --mdp-text: #e5e7eb;
+    --mdp-muted: #9ca3af;
+    --mdp-border: #2d3340;
+    --mdp-border-strong: #4b5563;
+    --mdp-accent: #60a5fa;
+    --mdp-link: #93c5fd;
+    --mdp-zone-red: #7f1d1d;
+    --mdp-zone-amber: #78350f;
+    --mdp-zone-green: #14532d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+body.mdp-doc {
+  background: var(--mdp-bg);
+  color: var(--mdp-text);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
+       "Noto Sans TC", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ---------- Layout ---------- */
+.mdp-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  max-width: 1280px;
+  margin: 0 auto;
+  gap: 32px;
+  padding: 24px;
+}
+@media (max-width: 900px) {
+  .mdp-layout { grid-template-columns: 1fr; }
+  .mdp-sidebar { position: static !important; }
+}
+
+.mdp-sidebar {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  font-size: 14px;
+  padding: 12px;
+  background: var(--mdp-surface);
+  border: 1px solid var(--mdp-border);
+  border-radius: 12px;
+}
+.mdp-sidebar-title {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--mdp-muted);
+  margin-bottom: 8px;
+}
+.mdp-toc { list-style: none; padding: 0; margin: 0; }
+.mdp-toc li { margin: 2px 0; }
+.mdp-toc a {
+  display: block;
+  padding: 4px 8px;
+  color: var(--mdp-text);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+}
+.mdp-toc a:hover { background: var(--mdp-bg); }
+.mdp-toc a.mdp-toc-active {
+  border-left-color: var(--mdp-accent);
+  background: var(--mdp-bg);
+  color: var(--mdp-accent);
+}
+
+/* Inline TOC inside parent block */
+.mdp-toc-inline {
+  background: var(--mdp-bg);
+  border: 1px dashed var(--mdp-border);
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+.mdp-toc-inline ul { list-style: disc; padding-left: 20px; margin: 4px 0; }
+
+/* ---------- Document header ---------- */
+.mdp-doc-header { margin-bottom: 32px; }
+.mdp-doc-header h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+.mdp-intro {
+  color: var(--mdp-muted);
+  font-size: 16px;
+  margin: 0;
+}
+
+/* ---------- Block ---------- */
+.mdp-block {
+  background: var(--mdp-surface);
+  border: 1px solid var(--mdp-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin: 0 0 16px;
+}
+.mdp-block-header { margin-bottom: 8px; }
+.mdp-block-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mdp-anchor {
+  color: var(--mdp-muted);
+  text-decoration: none;
+  font-weight: normal;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.mdp-block-title:hover .mdp-anchor { opacity: 1; }
+.mdp-updated {
+  font-size: 12px;
+  color: var(--mdp-muted);
+  font-weight: normal;
+}
+.mdp-type-badge {
+  font-size: 11px;
+  color: var(--mdp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border: 1px solid var(--mdp-border);
+  border-radius: 4px;
+  margin-left: auto;
+}
+.mdp-children > * { margin-top: 12px; }
+
+/* Accent stripes */
+.mdp-accent-info { border-left: 4px solid var(--mdp-callout-note); }
+.mdp-accent-warning { border-left: 4px solid var(--mdp-callout-warning); }
+.mdp-accent-success { border-left: 4px solid var(--mdp-callout-tip); }
+.mdp-accent-danger { border-left: 4px solid var(--mdp-callout-caution); }
+
+/* History / collapsed = <details> */
+details.mdp-block {
+  padding: 0;
+}
+details.mdp-block .mdp-body { padding: 12px 20px; }
+details.mdp-block summary.mdp-collapsed-summary {
+  cursor: pointer;
+  padding: 12px 20px;
+  list-style: none;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details.mdp-block summary.mdp-collapsed-summary::before {
+  content: "▸";
+  color: var(--mdp-muted);
+}
+details.mdp-block[open] summary.mdp-collapsed-summary::before { content: "▾"; }
+details.mdp-block .mdp-children { padding: 0 20px 16px; }
+
+/* ---------- Pills, badges, callouts ---------- */
+.mdp-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  font-weight: 500;
+  background: var(--mdp-bg);
+  color: var(--mdp-muted);
+  border: 1px solid var(--mdp-border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mdp-pill-status-active,
+.mdp-pill-status-accepted,
+.mdp-pill-status-on-track,
+.mdp-pill-status-done,
+.mdp-pill-status-healthy,
+.mdp-pill-status-exceeded {
+  background: color-mix(in srgb, var(--mdp-status-active) 12%, transparent);
+  color: var(--mdp-status-active);
+  border-color: color-mix(in srgb, var(--mdp-status-active) 40%, transparent);
+}
+.mdp-pill-status-behind,
+.mdp-pill-status-degraded,
+.mdp-pill-status-blocked {
+  background: color-mix(in srgb, var(--mdp-status-behind) 12%, transparent);
+  color: var(--mdp-status-behind);
+  border-color: color-mix(in srgb, var(--mdp-status-behind) 40%, transparent);
+}
+.mdp-pill-status-deprecated,
+.mdp-pill-status-superseded,
+.mdp-pill-status-archive,
+.mdp-pill-status-closed {
+  background: var(--mdp-bg);
+  color: var(--mdp-muted);
+}
+.mdp-pill-status-rejected,
+.mdp-pill-status-down {
+  background: color-mix(in srgb, var(--mdp-status-rejected) 12%, transparent);
+  color: var(--mdp-status-rejected);
+  border-color: color-mix(in srgb, var(--mdp-status-rejected) 40%, transparent);
+}
+
+/* Priority pills */
+.mdp-pill-priority-critical {
+  background: color-mix(in srgb, #dc2626 14%, transparent);
+  color: #dc2626;
+  border-color: color-mix(in srgb, #dc2626 45%, transparent);
+}
+.mdp-pill-priority-high {
+  background: color-mix(in srgb, #d97706 14%, transparent);
+  color: #d97706;
+  border-color: color-mix(in srgb, #d97706 45%, transparent);
+}
+.mdp-pill-priority-low {
+  background: var(--mdp-bg);
+  color: var(--mdp-muted);
+}
+
+/* Header right-side meta cluster */
+.mdp-block-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mdp-title-text { flex: 0 1 auto; }
+.mdp-pills { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.mdp-meta-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+}
+.mdp-meta-item {
+  font-size: 12px;
+  color: var(--mdp-muted);
+}
+.mdp-owner { color: var(--mdp-accent); font-weight: 500; }
+
+/* Block footer (metadata strip) */
+.mdp-block-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mdp-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.mdp-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--mdp-muted);
+}
+.mdp-meta-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mdp-muted);
+  min-width: 80px;
+}
+.mdp-meta-value { color: var(--mdp-text); }
+.mdp-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--mdp-bg);
+  border: 1px solid var(--mdp-border);
+  color: var(--mdp-text);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.mdp-xref {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mdp-accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mdp-accent) 30%, transparent);
+  color: var(--mdp-accent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  text-decoration: none;
+}
+.mdp-xref:hover {
+  background: color-mix(in srgb, var(--mdp-accent) 18%, transparent);
+}
+
+/* Mermaid diagram container */
+pre.mermaid {
+  background: var(--mdp-surface);
+  border: 1px solid var(--mdp-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--mdp-muted);
+  white-space: pre;
+  overflow-x: auto;
+}
+pre.mermaid[data-mermaid-done] {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  white-space: normal;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+
+.mdp-trend { font-weight: 600; }
+.mdp-trend-up, .mdp-trend-up2 { color: #16a34a; }
+.mdp-trend-down, .mdp-trend-down2 { color: #dc2626; }
+.mdp-trend-flat { color: var(--mdp-muted); }
+
+.mdp-callout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-left: 4px solid var(--mdp-border-strong);
+  background: var(--mdp-bg);
+  border-radius: 6px;
+}
+.mdp-callout-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mdp-callout-note { border-color: var(--mdp-callout-note); }
+.mdp-callout-note .mdp-callout-label { color: var(--mdp-callout-note); }
+.mdp-callout-tip { border-color: var(--mdp-callout-tip); }
+.mdp-callout-tip .mdp-callout-label { color: var(--mdp-callout-tip); }
+.mdp-callout-important { border-color: var(--mdp-callout-important); }
+.mdp-callout-important .mdp-callout-label { color: var(--mdp-callout-important); }
+.mdp-callout-warning { border-color: var(--mdp-callout-warning); }
+.mdp-callout-warning .mdp-callout-label { color: var(--mdp-callout-warning); }
+.mdp-callout-caution { border-color: var(--mdp-callout-caution); }
+.mdp-callout-caution .mdp-callout-label { color: var(--mdp-callout-caution); }
+
+/* ---------- Caption ---------- */
+.mdp-caption {
+  font-size: 13px;
+  color: var(--mdp-muted);
+  text-align: center;
+  margin-top: 8px;
+}
+.mdp-caption-label {
+  font-weight: 600;
+  color: var(--mdp-text);
+  margin-right: 4px;
+}
+
+/* ---------- Table ---------- */
+.mdp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 14px;
+}
+.mdp-table th, .mdp-table td {
+  border-bottom: 1px solid var(--mdp-border);
+  padding: 8px 10px;
+  text-align: left;
+}
+.mdp-table thead th {
+  background: var(--mdp-bg);
+  font-weight: 600;
+}
+.mdp-table tbody tr:hover { background: var(--mdp-bg); }
+.mdp-rowgroup {
+  background: color-mix(in srgb, var(--mdp-accent) 6%, transparent);
+  font-size: 13px;
+}
+.mdp-rowgroup-label {
+  font-weight: 600;
+  color: var(--mdp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ---------- KPI ---------- */
+.mdp-kpi {
+  padding: 12px;
+  background: var(--mdp-bg);
+  border-radius: 8px;
+  margin: 8px 0;
+}
+.mdp-kpi-head { display: grid; gap: 4px; }
+.mdp-kpi-metric {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mdp-muted);
+}
+.mdp-kpi-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.mdp-kpi-unit { font-size: 16px; color: var(--mdp-muted); margin-left: 4px; }
+.mdp-kpi-target, .mdp-kpi-delta {
+  font-size: 13px;
+}
+.mdp-kpi-delta-positive { color: var(--mdp-status-active); }
+.mdp-kpi-delta-negative { color: var(--mdp-status-rejected); }
+.mdp-kpi-delta-neutral { color: var(--mdp-muted); }
+
+.mdp-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.mdp-kpi-card {
+  background: var(--mdp-surface);
+  border: 1px solid var(--mdp-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.mdp-kpi-card[data-status="behind"] { border-top: 3px solid var(--mdp-status-behind); }
+.mdp-kpi-card[data-status="on-track"] { border-top: 3px solid var(--mdp-status-active); }
+.mdp-kpi-card[data-status="exceeded"] { border-top: 3px solid var(--mdp-status-active); }
+.mdp-kpi-card .mdp-body { font-size: 13px; color: var(--mdp-muted); }
+
+/* ---------- Gauge ---------- */
+.mdp-gauge { margin: 12px 0; }
+.mdp-gauge-track {
+  position: relative;
+  height: 16px;
+  border-radius: 8px;
+  overflow: visible;
+}
+.mdp-gauge-needle, .mdp-gauge-target {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  transform: translateX(-50%);
+}
+.mdp-gauge-needle { background: var(--mdp-text); }
+.mdp-gauge-target {
+  background: transparent;
+  border-left: 2px dashed var(--mdp-text);
+  opacity: 0.6;
+}
+.mdp-gauge-readout {
+  margin-top: 8px;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+}
+.mdp-gauge-value { font-weight: 700; }
+.mdp-gauge-target-text { color: var(--mdp-muted); }
+
+/* ---------- Code ---------- */
+.mdp-code {
+  position: relative;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.mdp-code code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+.mdp-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(255,255,255,0.08);
+  color: #cbd5e1;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mdp-copy:hover { background: rgba(255,255,255,0.18); }
+
+code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+:not(pre) > code {
+  background: var(--mdp-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* ---------- Tabs (variant-group) ---------- */
+.mdp-tabs { margin: 12px 0; }
+.mdp-tab-list {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--mdp-border);
+  margin-bottom: 12px;
+}
+.mdp-tab-btn {
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--mdp-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: inherit;
+}
+.mdp-tab-btn.mdp-tab-active {
+  color: var(--mdp-accent);
+  border-bottom-color: var(--mdp-accent);
+  font-weight: 600;
+}
+.mdp-tab-panel { display: none; }
+.mdp-tab-panel.mdp-tab-active { display: block; }
+
+/* ---------- Dialogue ---------- */
+.mdp-type-dialogue .mdp-children > .mdp-block {
+  background: var(--mdp-bg);
+  border: none;
+  padding: 8px 12px;
+}
+.mdp-type-turn .mdp-block-title { font-size: 13px; }
+.mdp-type-turn { max-width: 80%; }
+.mdp-type-turn[data-speaker] .mdp-block-title::before {
+  content: attr(data-speaker);
+  font-weight: 600;
+  color: var(--mdp-accent);
+  margin-right: 6px;
+}
+
+/* ---------- Figure ---------- */
+.mdp-fig {
+  margin: 16px 0;
+  text-align: center;
+}
+.mdp-fig img { max-width: 100%; height: auto; border-radius: 6px; }
+
+/* ---------- Misc ---------- */
+.mdp-body > * + * { margin-top: 12px; }
+.mdp-body p { margin: 12px 0; }
+.mdp-body a { color: var(--mdp-link); }
+.mdp-body h3, .mdp-body h4 { margin: 16px 0 8px; }
+blockquote {
+  border-left: 3px solid var(--mdp-border-strong);
+  margin: 12px 0;
+  padding: 4px 12px;
+  color: var(--mdp-muted);
+  background: var(--mdp-bg);
+}
+
+</style>
+</head>
+<body class="page-playground">
+
+<nav class="site-nav">
+  <div class="site-nav-inner">
+    <a class="site-logo" href="./index.html">Markdown<span>+</span></a>
+    <div class="site-nav-links">
+      <a href="./index.html">為何需要</a>
+      <a href="./syntax.html">語法</a>
+      <a href="./tutorial.html">教學</a>
+      <a href="./playground.html" class="active">Playground</a>
+    </div>
+  </div>
+</nav>
+
+<div class="pg-shell">
+
+  <!-- ===== Sub-header: tabs + sample picker + global status ===== -->
+  <div class="pg-subheader">
+    <div class="pg-segmented" role="tablist" aria-label="主視圖切換">
+      <button type="button" class="active" data-tab="editor" role="tab" aria-selected="true">Editor + Viewer</button>
+      <button type="button" data-tab="rewriter" role="tab" aria-selected="false">Rewriter</button>
+    </div>
+    <div class="pg-sub-right">
+      <button type="button" class="pg-sample-picker" id="file-load" title="從本機載入 .md / .mdp.md / .txt 文件">
+        <svg class="picker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span>載入檔案</span>
+      </button>
+      <input type="file" id="file-input" accept=".md,.mdp,.markdown,.txt,text/markdown,text/plain" style="display:none">
+      <button type="button" class="pg-sample-picker" id="sample-reset" title="重新載入預設範例">
+        <svg class="picker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"></polyline>
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+        </svg>
+        <span>重新載入範例</span>
+      </button>
+      <span class="pg-status ok" id="global-status">PASS · 0 blocks</span>
+    </div>
+  </div>
+
+  <!-- ===== Tab 1: Editor + Live Preview ===== -->
+  <div class="pg-panel active" id="panel-editor" role="tabpanel">
+    <div class="pg-split">
+
+      <!-- Source pane (IDE-style file tab) -->
+      <section class="pg-pane" data-pane="editor">
+        <header class="pg-pane-head">
+          <div class="pg-file-tab">source.mdp.md</div>
+          <div class="pg-pane-head-right">
+            <span id="editor-line-count">0 lines</span>
+            <button type="button" class="pg-pane-fs-btn" data-pane-fs title="放大此面板 (Esc 退出)" aria-label="放大此面板">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path class="fs-expand" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                <path class="fs-collapse" d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <textarea
+          id="editor"
+          class="pg-editor"
+          spellcheck="false"
+          autocapitalize="off"
+          autocomplete="off"
+          autocorrect="off"
+          placeholder="Loading kitchen-sink sample..."></textarea>
+      </section>
+
+      <!-- Preview pane (browser-chrome) -->
+      <section class="pg-pane" data-pane="preview">
+        <header class="pg-pane-head">
+          <div class="pg-browser-chrome">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <div class="pg-url-bar">rendered preview</div>
+          <div class="pg-pane-head-right">
+            <span id="block-count">0 blocks</span>
+            <button type="button" class="pg-pane-fs-btn" data-pane-fs title="放大此面板 (Esc 退出)" aria-label="放大此面板">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path class="fs-expand" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                <path class="fs-collapse" d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div class="pg-preview" id="preview"></div>
+      </section>
+    </div>
+
+    <!-- Bottom issue drawer -->
+    <div class="pg-drawer collapsed" id="drawer">
+      <div class="pg-drawer-head" id="drawer-head" role="button" tabindex="0" aria-expanded="false">
+        <span class="chev">▾</span>
+        <span id="drawer-summary">0 errors · 0 warnings · click to expand</span>
+      </div>
+      <div class="pg-drawer-body" id="drawer-body"></div>
+    </div>
+  </div>
+
+  <!-- ===== Tab 2: Rewriter ===== -->
+  <div class="pg-panel" id="panel-rewriter" role="tabpanel">
+    <div class="pg-rewriter-controls">
+      <label>輸入格式
+        <select id="rewriter-from">
+          <option value="markdown">Plain Markdown</option>
+          <option value="html">HTML</option>
+        </select>
+      </label>
+      <button type="button" class="site-btn" id="rewriter-run">改寫</button>
+      <button type="button" class="site-btn secondary" id="rewriter-push">推送至 Editor →</button>
+      <span class="pg-rewriter-status" id="rewriter-status">準備就緒</span>
+    </div>
+    <div class="pg-rewriter">
+      <div class="pg-rewriter-pane" data-pane="rewriter-input">
+        <header class="pg-pane-head">
+          <div class="pg-file-tab">input.md</div>
+          <div class="pg-pane-head-right">
+            <button type="button" class="pg-pane-fs-btn" data-pane-fs title="放大此面板 (Esc 退出)" aria-label="放大此面板">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path class="fs-expand" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                <path class="fs-collapse" d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <textarea id="rewriter-input" placeholder="貼上你要改寫的 Markdown 或 HTML..."></textarea>
+      </div>
+      <div class="pg-rewriter-arrow">→</div>
+      <div class="pg-rewriter-pane" data-pane="rewriter-output">
+        <header class="pg-pane-head">
+          <div class="pg-file-tab">output.mdp.md</div>
+          <div class="pg-pane-head-right">
+            <button type="button" class="pg-pane-fs-btn" data-pane-fs title="放大此面板 (Esc 退出)" aria-label="放大此面板">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path class="fs-expand" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                <path class="fs-collapse" d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <textarea id="rewriter-output" placeholder="改寫後 Markdown+ 或產生的 prompt..."></textarea>
+      </div>
+    </div>
+    <div class="pg-hint" id="rewriter-hint">
+      <strong>由 LLM 改寫:</strong>
+      改寫透過後端 <code>/api/rewrite</code> 呼叫 OpenAI Responses API,API key 從伺服器
+      <code>OPENAI_API_KEY</code> 環境變數讀取,不在瀏覽器暴露。
+      啟動方式:<code>set OPENAI_API_KEY=sk-...</code> 後 <code>python serve.py</code>,
+      然後開啟 <code>http://localhost:8000/website/playground.html</code>。
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Markdown+ Viewer runtime — minimal client-side enhancement.
+// No framework. Handles: tab switching, code copy, scroll-spy TOC highlight.
+(function () {
+  "use strict";
+
+  // ---- Tab switching ----
+  document.querySelectorAll(".mdp-tabs").forEach(function (tabs) {
+    var btns = tabs.querySelectorAll(".mdp-tab-btn");
+    var panels = tabs.querySelectorAll(".mdp-tab-panel");
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var target = btn.getAttribute("data-target");
+        btns.forEach(function (b) {
+          b.classList.toggle("mdp-tab-active", b === btn);
+          b.setAttribute("aria-selected", b === btn ? "true" : "false");
+        });
+        panels.forEach(function (p) {
+          p.classList.toggle("mdp-tab-active", p.id === target);
+        });
+      });
+    });
+  });
+
+  // ---- Code copy buttons ----
+  document.querySelectorAll(".mdp-copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var code = btn.parentElement.querySelector("code");
+      if (!code) return;
+      var text = code.innerText;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(function () {
+          var orig = btn.textContent;
+          btn.textContent = "Copied";
+          setTimeout(function () { btn.textContent = orig; }, 1500);
+        });
+      }
+    });
+  });
+
+  // ---- Scroll-spy TOC highlight ----
+  var tocLinks = document.querySelectorAll(".mdp-toc a[data-toc-target]");
+  if (tocLinks.length === 0) return;
+  var targetById = {};
+  tocLinks.forEach(function (a) {
+    var id = a.getAttribute("data-toc-target");
+    var el = document.getElementById(id);
+    if (el) targetById[id] = { link: a, el: el };
+  });
+  function update() {
+    var y = window.scrollY + 80;
+    var active = null;
+    for (var id in targetById) {
+      var top = targetById[id].el.offsetTop;
+      if (top <= y) active = id;
+    }
+    for (var id2 in targetById) {
+      targetById[id2].link.classList.toggle("mdp-toc-active", id2 === active);
+    }
+  }
+  update();
+  window.addEventListener("scroll", update, { passive: true });
+  window.addEventListener("resize", update);
+})();
+
+</script>
+<script type="module">
+// ===== INLINED: mdp-validator =====
+// Markdown+ Validator — ESM module, runs in browser and Node.
+// Mirrors markdown_plus_validator.py rule set.
+
+const VALID_TYPES = new Set([
+  "document","state","history","decision","record","issue","note",
+  "spec","task","reference","figure","table","chart","kpi","card",
+  "gauge","targets","dashboard","dialogue","turn","step","diagram",
+]);
+const VALID_STATUS = new Set([
+  "draft","active","proposed","accepted","rejected","superseded",
+  "deprecated","archive","healthy","degraded","down",
+  "on-track","behind","exceeded","done","blocked","open","closed",
+]);
+const VALID_VISIBILITY = new Set(["collapsed","hidden"]);
+const VALID_PRIORITY = new Set(["critical","high","normal","low"]);
+const PROSE_REQUIRED_TYPES = new Set(["figure","table","chart","kpi","gauge","video","audio"]);
+const FORBIDDEN_RAW_TAGS = new Set([
+  "div","span","section","article","aside","nav","header","footer",
+  "script","style","svg","video","audio","img","table","tr","td","th",
+  "ul","ol","li","p","h1","h2","h3","h4","h5","h6","details","summary","figure","figcaption",
+]);
+
+const BLOCK_HEADER_RE =
+  /^(?<indent>\s*)- \*\*#(?<id>[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\*\*(?<meta>(?:\s+`[^`]+`)*)\s*$/;
+const META_PAIR_RE = /`([a-z][a-z0-9-]*):([^`]+)`/g;
+const ID_KEBAB_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+const NUMBERED_CAPTION_RE = /^\s*\*([A-Z][a-zA-Z]+)\s+\d+:/;
+
+function parseMetadata(s) {
+  const out = {};
+  for (const m of s.matchAll(META_PAIR_RE)) {
+    out[m[1]] = m[2].trim();
+  }
+  return out;
+}
+
+function parseBlocks(text) {
+  const lines = text.split(/\r?\n/);
+  const blocks = [];
+  let current = null;
+  let inFence = false;
+  let fenceMarker = "";
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const stripped = raw.replace(/^\s+/, "");
+    if (stripped.startsWith("```") || stripped.startsWith("~~~")) {
+      const marker = stripped.slice(0, 3);
+      if (!inFence) { inFence = true; fenceMarker = marker; }
+      else if (stripped.startsWith(fenceMarker)) { inFence = false; fenceMarker = ""; }
+      if (current) current.bodyLines.push(raw);
+      continue;
+    }
+    if (inFence) { if (current) current.bodyLines.push(raw); continue; }
+    const m = BLOCK_HEADER_RE.exec(raw);
+    if (m) {
+      const indent = m.groups.indent.length;
+      const id = m.groups.id;
+      const meta = parseMetadata(m.groups.meta || "");
+      current = {
+        id, type: meta.type || "", metadata: meta,
+        indent, line: i + 1, bodyLines: [],
+        parent: null, children: [],
+      };
+      blocks.push(current);
+    } else if (current) {
+      current.bodyLines.push(raw);
+    }
+  }
+  const stack = [];
+  for (const b of blocks) {
+    while (stack.length && stack[stack.length - 1].indent >= b.indent) stack.pop();
+    if (stack.length) {
+      b.parent = stack[stack.length - 1].id;
+      stack[stack.length - 1].children.push(b.id);
+    }
+    stack.push(b);
+  }
+  return blocks;
+}
+
+function blockHasProse(b) {
+  let inFenceLocal = false;
+  for (const line of b.bodyLines) {
+    const s = line.trim();
+    if (!s) continue;
+    if (s.startsWith("```") || s.startsWith("~~~")) { inFenceLocal = !inFenceLocal; continue; }
+    if (inFenceLocal) continue;
+    if (/^\s*\*[A-Z][a-zA-Z]+:/.test(line)) continue;
+    if (s.startsWith("|") || s.startsWith("![")) continue;
+    if (/[A-Za-z一-鿿]/.test(s)) return true;
+  }
+  return false;
+}
+
+function validate(text) {
+  const blocks = parseBlocks(text);
+  const issues = [];
+  const ids = new Set();
+
+  for (const b of blocks) {
+    if (!ID_KEBAB_RE.test(b.id))
+      issues.push({severity:"error",line:b.line,code:"ID-001",blockId:b.id,message:`block id '${b.id}' is not valid kebab-case`});
+    if (ids.has(b.id))
+      issues.push({severity:"error",line:b.line,code:"ID-002",blockId:b.id,message:`duplicate block id '${b.id}'`});
+    ids.add(b.id);
+
+    if (!b.type)
+      issues.push({severity:"error",line:b.line,code:"TYPE-001",blockId:b.id,message:`block '${b.id}' missing type metadata`});
+    else if (!VALID_TYPES.has(b.type) && !b.type.startsWith("x-"))
+      issues.push({severity:"error",line:b.line,code:"TYPE-002",blockId:b.id,message:`unknown type '${b.type}'`});
+
+    const status = b.metadata.status;
+    if (status && !VALID_STATUS.has(status))
+      issues.push({severity:"warning",line:b.line,code:"STATUS-001",blockId:b.id,message:`unknown status '${status}'`});
+
+    const vis = b.metadata.visibility;
+    if (vis && !VALID_VISIBILITY.has(vis))
+      issues.push({severity:"warning",line:b.line,code:"VIS-001",blockId:b.id,message:`unknown visibility '${vis}'`});
+
+    const upd = b.metadata.updated;
+    if (upd && upd !== "unknown" && !/^\d{4}-\d{2}-\d{2}$/.test(upd))
+      issues.push({severity:"warning",line:b.line,code:"UPD-001",blockId:b.id,message:`updated '${upd}' not ISO`});
+
+    if ((status === "deprecated" || status === "superseded") && !b.metadata["superseded-by"])
+      issues.push({severity:"error",line:b.line,code:"DEP-001",blockId:b.id,message:`status:${status} requires superseded-by`});
+
+    if (b.type === "history" && b.metadata.visibility !== "collapsed")
+      issues.push({severity:"warning",line:b.line,code:"HIST-001",blockId:b.id,message:`type:history should have visibility:collapsed`});
+
+    if (b.type === "kpi" && !b.metadata.value)
+      issues.push({severity:"error",line:b.line,code:"KPI-001",blockId:b.id,message:`type:kpi missing value`});
+
+    if (b.type === "gauge") {
+      for (const req of ["value","min","max","target","zones"]) {
+        if (!b.metadata[req])
+          issues.push({severity:"error",line:b.line,code:"GAUGE-001",blockId:b.id,message:`type:gauge missing ${req}`});
+      }
+    }
+
+    if (PROSE_REQUIRED_TYPES.has(b.type) && !blockHasProse(b))
+      issues.push({severity:"error",line:b.line,code:"PROSE-001",blockId:b.id,message:`type:${b.type} missing prose companion`});
+  }
+
+  // Global checks
+  for (const b of blocks) {
+    const sb = b.metadata["superseded-by"];
+    if (sb && !blocks.some(x => x.id === sb))
+      issues.push({severity:"error",line:b.line,code:"XREF-001",blockId:b.id,message:`superseded-by:${sb} not found`});
+  }
+
+  const lines = text.split(/\r?\n/);
+  let inFence = false, fenceMarker = "";
+  let tableStart = null, tableRows = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const stripped = line.replace(/^\s+/, "");
+    if (stripped.startsWith("```") || stripped.startsWith("~~~")) {
+      const m = stripped.slice(0,3);
+      if (!inFence) { inFence = true; fenceMarker = m; }
+      else if (stripped.startsWith(fenceMarker)) { inFence = false; fenceMarker = ""; }
+      continue;
+    }
+    if (inFence) continue;
+
+    if (/^\s*:::/.test(line))
+      issues.push({severity:"error",line:i+1,code:"FENCE-001",message:`':::' directive not allowed`});
+
+    if (/data:[a-z]+\/[a-z+.-]+;base64,/i.test(line))
+      issues.push({severity:"error",line:i+1,code:"BASE64-001",message:`inline base64 not allowed`});
+
+    if (/<\s*svg\b/i.test(line))
+      issues.push({severity:"error",line:i+1,code:"SVG-001",message:`inline <svg> not allowed`});
+
+    // raw HTML
+    const tagMatches = line.matchAll(/<\s*\/?\s*([a-zA-Z][a-zA-Z0-9]*)\b/g);
+    for (const tm of tagMatches) {
+      const tag = tm[1].toLowerCase();
+      if (FORBIDDEN_RAW_TAGS.has(tag))
+        issues.push({severity:"error",line:i+1,code:"HTML-001",message:`raw HTML tag <${tag}> not allowed`});
+    }
+
+    if (NUMBERED_CAPTION_RE.test(line))
+      issues.push({severity:"warning",line:i+1,code:"CAP-NUM-001",message:`caption has hardcoded number`});
+
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      if (tableStart === null) tableStart = i + 1;
+      tableRows++;
+    } else {
+      if (tableStart !== null && tableRows > 30)
+        issues.push({severity:"warning",line:tableStart,code:"TBL-SIZE-001",message:`table ${tableRows} rows; use data-source`});
+      tableStart = null; tableRows = 0;
+    }
+  }
+
+  // variant-group checks
+  const byGroup = new Map();
+  for (const b of blocks) {
+    const vg = b.metadata["variant-group"];
+    if (vg) {
+      const key = `${b.parent || "_root_"}|${vg}`;
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key).push(b);
+    }
+  }
+  for (const [key, siblings] of byGroup) {
+    const variants = siblings.map(s => s.metadata.variant);
+    if (variants.some(v => !v))
+      issues.push({severity:"error",line:siblings[0].line,code:"VARIANT-001",message:`variant-group sibling missing variant`});
+    if (new Set(variants).size !== variants.length)
+      issues.push({severity:"error",line:siblings[0].line,code:"VARIANT-002",message:`variant-group has duplicate variants`});
+  }
+
+  issues.sort((a,b) => a.line - b.line || a.code.localeCompare(b.code));
+  return { blocks, issues, pass: issues.every(x => x.severity !== "error") };
+}
+
+// ===== INLINED: mdp-viewer =====
+// Markdown+ Viewer — ESM module, browser-ready.
+// Renders Markdown+ source to an HTML string. Pair with viewer.css + viewer-runtime.js.
+// (validator is bundled above in this inline build)
+const esc = (s) => String(s)
+  .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+  .replaceAll('"',"&quot;").replaceAll("'","&#39;");
+
+const CAPTION_RE = /^\s*\*([A-Z][a-zA-Z]+):\s+(.+?)\*\s*$/;
+const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
+const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
+const CODE_FENCE_RE = /^(\s*)(```|~~~)(\w*)\s*$/;
+const GFM_ALERT_RE = /^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/;
+const BLOCK_HEADER_PATTERN = /^\s*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/;
+
+function inlineMd(s) {
+  let out = esc(s);
+  // inline code (avoid touching its content)
+  const parts = []; let last = 0;
+  const re = /`([^`]+)`/g; let m;
+  while ((m = re.exec(out)) !== null) {
+    parts.push(out.slice(last, m.index));
+    parts.push(`<code>${m[1]}</code>`);
+    last = re.lastIndex;
+  }
+  parts.push(out.slice(last));
+  out = parts.join("");
+  out = out.replaceAll(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  out = out.replaceAll(/(?<!\*)\*([^*\s][^*]*?)\*(?!\*)/g, "<em>$1</em>");
+  out = out.replaceAll(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, a, b) => `<img src="${b}" alt="${a}" loading="lazy">`);
+  out = out.replaceAll(/(?<!!)\[([^\]]+)\]\(([^)]+)\)/g, (_, a, b) => `<a href="${b}">${a}</a>`);
+  return out;
+}
+
+function isSpecialLine(line) {
+  const s = line.trim();
+  return s.startsWith("```") || s.startsWith("~~~") || s.startsWith(">") ||
+    s.startsWith("|") || s.startsWith("#") || s.startsWith("![") ||
+    CAPTION_RE.test(line) || /^[-*]\s+/.test(s) || /^\d+\.\s+/.test(s);
+}
+
+function renderTable(rows, blockType) {
+  const cells = (row) => {
+    let body = row.trim();
+    if (body.startsWith("|")) body = body.slice(1);
+    if (body.endsWith("|")) body = body.slice(0, -1);
+    return body.split("|").map(c => c.trim());
+  };
+  const renderCell = (c) => {
+    const rg = c.match(/^\*\*—\s*(.+?)\s*—\*\*$/);
+    if (rg) return `<td class="mdp-rowgroup" colspan="99"><span class="mdp-rowgroup-label">${esc(rg[1])}</span></td>`;
+    const pill = c.match(/^`status:([a-z-]+)`$/);
+    if (pill) return `<td><span class="mdp-pill mdp-pill-status-${pill[1]}">${esc(pill[1])}</span></td>`;
+    const tr = c.match(/^`trend:(up2|down2|up|down|flat)`$/);
+    if (tr) {
+      const arrow = {up:"↑",up2:"↑↑",down:"↓",down2:"↓↓",flat:"→"}[tr[1]];
+      return `<td><span class="mdp-trend mdp-trend-${tr[1]}">${arrow}</span></td>`;
+    }
+    return `<td>${inlineMd(c)}</td>`;
+  };
+  const header = cells(rows[0]);
+  const bodyRows = rows.slice(2);
+  const thead = `<thead><tr>${header.map(h => `<th>${inlineMd(h)}</th>`).join("")}</tr></thead>`;
+  const trs = bodyRows.map(r => {
+    const cs = cells(r);
+    const isGroup = cs.some(c => /^\*\*—.*—\*\*$/.test(c));
+    if (isGroup) {
+      const labelCell = cs.find(c => /^\*\*—.*—\*\*$/.test(c));
+      const label = labelCell.match(/^\*\*—\s*(.+?)\s*—\*\*$/)[1];
+      return `<tr class="mdp-rowgroup-row"><td class="mdp-rowgroup" colspan="${header.length}"><span class="mdp-rowgroup-label">${esc(label)}</span></td></tr>`;
+    }
+    return `<tr>${cs.map(renderCell).join("")}</tr>`;
+  }).join("");
+  return `<table class="mdp-table mdp-table-${blockType}">${thead}<tbody>${trs}</tbody></table>`;
+}
+
+function renderBody(bodyLines, indent, blockType, captionCounters) {
+  const base = indent + 2;
+  const norm = bodyLines.map(line => {
+    const head = line.slice(0, base);
+    if (head.trim() === "") return line.slice(base);
+    return line.replace(/^\s+/, "");
+  });
+  const out = [];
+  let pendingCaption = null;
+  let i = 0;
+  const emitCaption = (kind, text) => {
+    captionCounters[kind] = (captionCounters[kind] || 0) + 1;
+    return `<figcaption class="mdp-caption mdp-caption-${kind.toLowerCase()}"><span class="mdp-caption-label">${esc(kind)} ${captionCounters[kind]}:</span> ${inlineMd(text)}</figcaption>`;
+  };
+  while (i < norm.length) {
+    const line = norm[i];
+    const s = line.trim();
+    if (!s) { i++; continue; }
+
+    const cm = line.match(CAPTION_RE);
+    if (cm) { pendingCaption = { kind: cm[1], text: cm[2] }; i++; continue; }
+
+    const fm = line.match(CODE_FENCE_RE);
+    if (fm) {
+      const lang = fm[3] || "";
+      let j = i + 1;
+      const codeLines = [];
+      while (j < norm.length && !CODE_FENCE_RE.test(norm[j])) { codeLines.push(norm[j]); j++; }
+      const codeText = codeLines.join("\n");
+      let inner;
+      if (lang.toLowerCase() === "mermaid") {
+        inner = `<pre class="mermaid">${esc(codeText)}</pre>`;
+      } else {
+        const cls = lang ? ` class="language-${esc(lang)}"` : "";
+        inner = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code${cls}>${esc(codeText)}</code></pre>`;
+      }
+      if (pendingCaption) {
+        out.push(`<figure class="mdp-fig mdp-fig-${pendingCaption.kind.toLowerCase()}">${inner}${emitCaption(pendingCaption.kind, pendingCaption.text)}</figure>`);
+        pendingCaption = null;
+      } else out.push(inner);
+      i = j + 1;
+      continue;
+    }
+
+    if (s.startsWith(">")) {
+      let alertKind = null;
+      const am = line.match(GFM_ALERT_RE);
+      if (am) { alertKind = am[1].toLowerCase(); i++; }
+      const ql = [];
+      while (i < norm.length && (norm[i].trimStart().startsWith("> ") || norm[i].trim() === ">")) {
+        ql.push(norm[i].trimStart().replace(/^>\s?/, ""));
+        i++;
+      }
+      const inner = ql.join("\n").trim();
+      if (alertKind) {
+        out.push(`<aside class="mdp-callout mdp-callout-${alertKind}"><div class="mdp-callout-label">${alertKind.toUpperCase()}</div><div class="mdp-callout-body">${inlineMd(inner)}</div></aside>`);
+      } else {
+        out.push(`<blockquote>${inlineMd(inner)}</blockquote>`);
+      }
+      continue;
+    }
+
+    if (TABLE_ROW_RE.test(line)) {
+      let j = i;
+      const rows = [];
+      while (j < norm.length && TABLE_ROW_RE.test(norm[j])) { rows.push(norm[j].trim()); j++; }
+      if (rows.length >= 2 && TABLE_SEP_RE.test(rows[1])) {
+        const tbl = renderTable(rows, blockType);
+        if (pendingCaption) {
+          out.push(`<figure class="mdp-fig mdp-fig-${pendingCaption.kind.toLowerCase()}">${emitCaption(pendingCaption.kind, pendingCaption.text)}${tbl}</figure>`);
+          pendingCaption = null;
+        } else out.push(tbl);
+        i = j;
+        continue;
+      }
+    }
+
+    const imgM = line.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+    if (imgM) {
+      const img = `<img src="${imgM[2]}" alt="${imgM[1]}" loading="lazy">`;
+      if (pendingCaption) {
+        out.push(`<figure class="mdp-fig mdp-fig-${pendingCaption.kind.toLowerCase()}">${img}${emitCaption(pendingCaption.kind, pendingCaption.text)}</figure>`);
+        pendingCaption = null;
+      } else out.push(img);
+      i++;
+      continue;
+    }
+
+    const hm = s.match(/^(#{3,4})\s+(.+)$/);
+    if (hm) { out.push(`<h${hm[1].length}>${inlineMd(hm[2])}</h${hm[1].length}>`); i++; continue; }
+
+    if (/^[-*]\s+/.test(s)) {
+      const items = [];
+      while (i < norm.length && /^[-*]\s+/.test(norm[i].trim())) {
+        items.push(norm[i].trim().slice(2));
+        i++;
+      }
+      out.push("<ul>" + items.map(li => `<li>${inlineMd(li)}</li>`).join("") + "</ul>");
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(s)) {
+      const items = [];
+      while (i < norm.length && /^\d+\.\s+/.test(norm[i].trim())) {
+        items.push(norm[i].trim().replace(/^\d+\.\s+/, ""));
+        i++;
+      }
+      out.push("<ol>" + items.map(li => `<li>${inlineMd(li)}</li>`).join("") + "</ol>");
+      continue;
+    }
+
+    // Collect a run of non-blank, non-special lines.
+    // Preserve original (untrimmed) lines so that ASCII-art / pre-formatted runs
+    // can be detected and rendered as <pre> instead of being joined into a paragraph.
+    const paraRaw = [norm[i]]; i++;
+    while (i < norm.length && norm[i].trim() && !isSpecialLine(norm[i])) {
+      paraRaw.push(norm[i]); i++;
+    }
+    if (looksLikePreformatted(paraRaw)) {
+      out.push(`<pre class="mdp-code mdp-code-recovered"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code>${esc(paraRaw.join("\n"))}</code></pre>`);
+    } else {
+      out.push(`<p>${inlineMd(paraRaw.map(l => l.trim()).join(" "))}</p>`);
+    }
+  }
+  return out.join("\n");
+}
+
+// Recover unfenced ASCII art / directory trees / aligned tabular text:
+// if ANY line in the run contains box-drawing chars OR the run has >= 2 lines
+// that all start with whitespace-aligned tree-like prefixes, treat as preformatted.
+function looksLikePreformatted(lines) {
+  if (lines.length < 2) return false;
+  const boxRe = /[─-╿]/;                        // box drawings unicode block
+  const treePrefixRe = /^\s*(?:[│|]\s|[├└]──|[├└][─—\-])/;
+  let boxHits = 0;
+  let treeHits = 0;
+  for (const l of lines) {
+    if (boxRe.test(l)) boxHits++;
+    if (treePrefixRe.test(l)) treeHits++;
+  }
+  if (boxHits >= 2) return true;
+  if (treeHits >= 2) return true;
+  // Multi-line with a clear initial 2+ space indent on every line → likely preformatted code
+  if (lines.length >= 3 && lines.every(l => /^[ \t]{2,}/.test(l) || /^[A-Za-z0-9_\-/\.]+\s*$/.test(l))) return true;
+  return false;
+}
+
+function renderKpi(b) {
+  const m = b.metadata;
+  const value = m.value || "";
+  const unit = m.unit || "";
+  const target = m.target || "";
+  const delta = m.delta || "";
+  const deltaCls = delta.startsWith("+") ? "positive" : delta.startsWith("-") ? "negative" : "neutral";
+  let html = `<div class="mdp-kpi-head"><div class="mdp-kpi-metric">${esc(m.metric || "")}</div>`;
+  html += `<div class="mdp-kpi-value">${esc(value)}${unit ? `<span class="mdp-kpi-unit">${esc(unit)}</span>` : ""}</div>`;
+  if (target) html += `<div class="mdp-kpi-target">Target ${esc(target)}${esc(unit)}</div>`;
+  if (delta) html += `<div class="mdp-kpi-delta mdp-kpi-delta-${deltaCls}">${esc(delta)}</div>`;
+  html += `</div>`;
+  return `<div class="mdp-kpi" data-status="${esc(m.status || "")}">${html}</div>`;
+}
+
+function renderGauge(b) {
+  const m = b.metadata;
+  const v = parseFloat(m.value || "0");
+  const lo = parseFloat(m.min || "0");
+  const hi = parseFloat(m.max || "100");
+  const t = parseFloat(m.target || hi);
+  const pct = hi === lo ? 0 : Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
+  const tpct = hi === lo ? 0 : Math.max(0, Math.min(100, (t - lo) / (hi - lo) * 100));
+  const zonesRaw = m.zones || "";
+  const zones = [...zonesRaw.matchAll(/([\d.]+):([a-z]+)/g)].map(x => [parseFloat(x[1]), x[2]]);
+  let gradient = "linear-gradient(to right, var(--mdp-zone-amber), var(--mdp-zone-green))";
+  if (zones.length) {
+    zones.sort((a, b) => a[0] - b[0]);
+    const stops = [];
+    let prev = 0;
+    for (const [th, color] of zones) {
+      const tp = Math.max(0, Math.min(100, (th - lo) / (hi - lo) * 100));
+      stops.push(`var(--mdp-zone-${color}) ${prev}%`);
+      stops.push(`var(--mdp-zone-${color}) ${tp}%`);
+      prev = tp;
+    }
+    stops.push(`var(--mdp-zone-${zones[zones.length-1][1]}) 100%`);
+    gradient = `linear-gradient(to right, ${stops.join(", ")})`;
+  }
+  const unit = esc(m.unit || "");
+  return `<div class="mdp-gauge"><div class="mdp-gauge-track" style="background:${gradient}">`
+    + `<div class="mdp-gauge-target" style="left:${tpct.toFixed(1)}%" title="Target ${t}${unit}"></div>`
+    + `<div class="mdp-gauge-needle" style="left:${pct.toFixed(1)}%" title="Value ${v}${unit}"></div>`
+    + `</div><div class="mdp-gauge-readout"><span class="mdp-gauge-value">${v}${unit}</span>`
+    + ` <span class="mdp-gauge-target-text">/ target ${t}${unit}</span></div></div>`;
+}
+
+function renderBlockHeader(b, depth) {
+  const m = b.metadata;
+  const title = m.title || b.id.replaceAll("-", " ");
+  const pills = [];
+  if (m.status) pills.push(`<span class="mdp-pill mdp-pill-status-${esc(m.status)}">${esc(m.status)}</span>`);
+  if (m.priority && m.priority !== "normal") {
+    pills.push(`<span class="mdp-pill mdp-pill-priority-${esc(m.priority)}">${esc(m.priority)}</span>`);
+  }
+  const rightItems = [];
+  if (m.updated) rightItems.push(`<time class="mdp-meta-item mdp-updated" title="updated">${esc(m.updated)}</time>`);
+  if (m.owner) rightItems.push(`<span class="mdp-meta-item mdp-owner" title="owner">@${esc(m.owner)}</span>`);
+  if (m.audience && m.audience !== "everyone") rightItems.push(`<span class="mdp-meta-item mdp-audience" title="audience">${esc(m.audience)}</span>`);
+  rightItems.push(`<span class="mdp-type-badge" title="type">${esc(b.type)}</span>`);
+  const level = Math.min(2 + depth, 6);
+  return `<header class="mdp-block-header"><h${level} class="mdp-block-title">`
+    + `<a class="mdp-anchor" href="#${esc(b.id)}">#</a>`
+    + `<span class="mdp-title-text">${esc(title)}</span>`
+    + (pills.length ? `<span class="mdp-pills">${pills.join("")}</span>` : "")
+    + `<span class="mdp-meta-right">${rightItems.join("")}</span>`
+    + `</h${level}></header>`;
+}
+
+function parseListMeta(s) {
+  if (!s) return [];
+  return s.replace(/^\[|\]$/g, "").split(",").map(x => x.trim()).filter(Boolean);
+}
+
+function renderBlockFooter(b) {
+  const m = b.metadata;
+  const rows = [];
+  const tags = parseListMeta(m.tags);
+  if (tags.length) {
+    rows.push(`<div class="mdp-meta-row"><span class="mdp-meta-label">tags</span>${
+      tags.map(t => `<span class="mdp-tag">${esc(t)}</span>`).join("")
+    }</div>`);
+  }
+  if (m["superseded-by"]) {
+    rows.push(`<div class="mdp-meta-row"><span class="mdp-meta-label">superseded by</span><a class="mdp-xref" href="#${esc(m["superseded-by"])}">#${esc(m["superseded-by"])}</a></div>`);
+  }
+  const related = parseListMeta(m.related);
+  if (related.length) {
+    rows.push(`<div class="mdp-meta-row"><span class="mdp-meta-label">related</span>${
+      related.map(r => `<a class="mdp-xref" href="#${esc(r)}">#${esc(r)}</a>`).join("")
+    }</div>`);
+  }
+  if (m.source) {
+    rows.push(`<div class="mdp-meta-row"><span class="mdp-meta-label">source</span><span class="mdp-meta-value">${esc(m.source)}</span></div>`);
+  }
+  if (m["valid-until"]) {
+    rows.push(`<div class="mdp-meta-row"><span class="mdp-meta-label">valid until</span><time class="mdp-meta-value">${esc(m["valid-until"])}</time></div>`);
+  }
+  if (m.author) {
+    rows.push(`<div class="mdp-meta-row"><span class="mdp-meta-label">author</span><span class="mdp-meta-value">${esc(m.author)}</span></div>`);
+  }
+  if (!rows.length) return "";
+  return `<footer class="mdp-block-footer">${rows.join("")}</footer>`;
+}
+
+function renderBlock(b, byId, depth, captionCounters) {
+  const isCollapsed = b.metadata.visibility === "collapsed" || b.type === "history";
+  const tag = isCollapsed ? "details" : "section";
+  let extras = "";
+  if (b.type === "kpi") extras += renderKpi(b);
+  if (b.type === "gauge") extras += renderGauge(b);
+  const bodyHtml = renderBody(b.bodyLines, b.indent, b.type, captionCounters);
+
+  let childrenBlock = "";
+  if (b.children.length) {
+    const groups = new Map();
+    const order = [];
+    for (const cid of b.children) {
+      const cb = byId.get(cid);
+      if (!cb) continue;
+      const vg = cb.metadata["variant-group"];
+      if (!groups.has(vg ?? null)) { groups.set(vg ?? null, []); order.push(vg ?? null); }
+      groups.get(vg ?? null).push(cid);
+    }
+    const subParts = [];
+    const nonVariant = b.children.filter(c => !byId.get(c)?.metadata["variant-group"]);
+    if (nonVariant.length >= 3) {
+      const items = nonVariant.map(cid => {
+        const cb = byId.get(cid);
+        const title = cb.metadata.title || cid.replaceAll("-", " ");
+        return `<li><a href="#${esc(cid)}">${esc(title)}</a></li>`;
+      }).join("");
+      subParts.push(`<nav class="mdp-toc mdp-toc-inline" aria-label="目錄"><ul>${items}</ul></nav>`);
+    }
+    for (const vg of order) {
+      const ids = groups.get(vg);
+      if (vg === null) {
+        for (const cid of ids) subParts.push(renderBlock(byId.get(cid), byId, depth + 1, captionCounters));
+      } else {
+        const btns = []; const panels = [];
+        ids.forEach((cid, idx) => {
+          const cb = byId.get(cid);
+          const variant = cb.metadata.variant || "default";
+          const active = idx === 0 ? " mdp-tab-active" : "";
+          btns.push(`<button type="button" role="tab" class="mdp-tab-btn${active}" data-target="tab-${vg}-${variant}" aria-selected="${idx===0}">${esc(variant)}</button>`);
+          panels.push(`<div role="tabpanel" id="tab-${vg}-${variant}" class="mdp-tab-panel${active}">${renderBlock(cb, byId, depth + 1, captionCounters)}</div>`);
+        });
+        subParts.push(`<div class="mdp-tabs" data-variant-group="${esc(vg)}"><div role="tablist" class="mdp-tab-list">${btns.join("")}</div><div class="mdp-tab-panels">${panels.join("")}</div></div>`);
+      }
+    }
+    childrenBlock = `<div class="mdp-children">${subParts.join("")}</div>`;
+  }
+
+  let summaryHtml = "";
+  if (isCollapsed) {
+    const title = b.metadata.title || b.id.replaceAll("-", " ");
+    summaryHtml = `<summary class="mdp-collapsed-summary"><span class="mdp-type-badge">${esc(b.type)}</span> ${esc(title)}</summary>`;
+  }
+  let classes = `mdp-block mdp-type-${b.type}`;
+  if (b.metadata.accent) classes += ` mdp-accent-${b.metadata.accent}`;
+  const footerHtml = renderBlockFooter(b);
+  return `<${tag} id="${esc(b.id)}" class="${classes}" data-type="${esc(b.type)}">${summaryHtml}${isCollapsed ? "" : renderBlockHeader(b, depth)}${extras}<div class="mdp-body">${bodyHtml}</div>${footerHtml}${childrenBlock}</${tag}>`;
+}
+
+function renderDashboardGrid(b, byId) {
+  const kpis = b.children.map(c => byId.get(c)).filter(x => x && x.type === "kpi");
+  if (!kpis.length) return "";
+  const cards = kpis.map(cb => {
+    const bodyHtml = renderBody(cb.bodyLines, cb.indent, cb.type, {});
+    return `<div id="${esc(cb.id)}" class="mdp-kpi-card" data-status="${esc(cb.metadata.status || "")}">${renderKpi(cb)}<div class="mdp-body">${bodyHtml}</div></div>`;
+  }).join("");
+  return `<div class="mdp-dashboard-grid">${cards}</div>`;
+}
+
+function renderDocument(text, opts = {}) {
+  const blocks = parseBlocks(text);
+  const byId = new Map(blocks.map(b => [b.id, b]));
+  const top = blocks.filter(b => !b.parent);
+  const lines = text.split(/\r?\n/);
+  const h1Idx = lines.findIndex(l => l.startsWith("# "));
+  const title = h1Idx >= 0 ? lines[h1Idx].slice(2).trim() : (opts.title || "Markdown+ Document");
+  const captionCounters = {};
+  let intro = "";
+
+  // Three rendering modes for content above first block:
+  // 1) No blocks at all → render whole document body as plain markdown + show banner
+  // 2) H1 present + content between H1 and first block → render as block-level markdown
+  // 3) No H1 + has blocks → no intro
+  if (blocks.length === 0) {
+    const allLines = h1Idx >= 0 ? lines.slice(h1Idx + 1) : lines;
+    if (allLines.length) {
+      const bodyHtml = renderBody(allLines, -2, "intro", captionCounters);
+      if (bodyHtml.trim()) {
+        const banner = `<aside class="mdp-callout mdp-callout-note"><div class="mdp-callout-label">NOTE</div><div class="mdp-callout-body">目前內容沒有 Markdown+ block (沒有 <code>- **#id**</code> 開頭的 bullet)。先以純 markdown 顯示;切到 <strong>Rewriter</strong> tab 可改寫成 Markdown+ 結構,改寫後按「推送至 Editor」即可看到 block 化效果。</div></aside>`;
+        intro = banner + `<div class="mdp-intro">${bodyHtml}</div>`;
+      }
+    }
+  } else if (h1Idx >= 0) {
+    const introLines = [];
+    for (let j = h1Idx + 1; j < lines.length; j++) {
+      if (BLOCK_HEADER_PATTERN.test(lines[j])) break;
+      introLines.push(lines[j]);
+    }
+    if (introLines.length) {
+      const introHtml = renderBody(introLines, -2, "intro", captionCounters);
+      if (introHtml.trim()) intro = `<div class="mdp-intro">${introHtml}</div>`;
+    }
+  }
+
+  const tocSeen = new Set();
+  const tocItems = top.flatMap(b => {
+    const vg = b.metadata["variant-group"];
+    if (vg) { if (tocSeen.has(vg)) return []; tocSeen.add(vg); }
+    const t = b.metadata.title || b.id.replaceAll("-", " ");
+    return `<li><a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}">${esc(t)}</a></li>`;
+  }).join("");
+  const sidebar = top.length >= 3
+    ? `<aside class="mdp-sidebar" aria-label="文件目錄"><div class="mdp-sidebar-title">目錄</div><ol class="mdp-toc">${tocItems}</ol></aside>`
+    : "";
+
+  const renderedTop = [];
+  const consumed = new Set();
+  for (const b of top) {
+    if (consumed.has(b.id)) continue;
+    const vg = b.metadata["variant-group"];
+    if (vg) {
+      const siblings = top.filter(x => x.metadata["variant-group"] === vg);
+      siblings.forEach(s => consumed.add(s.id));
+      const btns = [], panels = [];
+      siblings.forEach((s, idx) => {
+        const variant = s.metadata.variant || "default";
+        const active = idx === 0 ? " mdp-tab-active" : "";
+        btns.push(`<button type="button" role="tab" class="mdp-tab-btn${active}" data-target="tab-${vg}-${variant}" aria-selected="${idx===0}">${esc(variant)}</button>`);
+        panels.push(`<div role="tabpanel" id="tab-${vg}-${variant}" class="mdp-tab-panel${active}">${renderBlock(s, byId, 0, captionCounters)}</div>`);
+      });
+      renderedTop.push(`<div class="mdp-tabs" data-variant-group="${esc(vg)}"><div role="tablist" class="mdp-tab-list">${btns.join("")}</div><div class="mdp-tab-panels">${panels.join("")}</div></div>`);
+      continue;
+    }
+    if (b.type === "dashboard") {
+      const dashBody = renderBody(b.bodyLines, b.indent, b.type, captionCounters);
+      const grid = renderDashboardGrid(b, byId);
+      const others = b.children.map(c => byId.get(c)).filter(x => x && x.type !== "kpi")
+        .map(c => renderBlock(c, byId, 1, captionCounters)).join("");
+      renderedTop.push(`<section id="${esc(b.id)}" class="mdp-block mdp-type-dashboard" data-type="dashboard">${renderBlockHeader(b, 0)}<div class="mdp-body">${dashBody}</div>${grid}${others}</section>`);
+      consumed.add(b.id);
+      continue;
+    }
+    renderedTop.push(renderBlock(b, byId, 0, captionCounters));
+    consumed.add(b.id);
+  }
+
+  return {
+    title,
+    intro,
+    sidebarHtml: sidebar,
+    mainHtml: renderedTop.join("\n"),
+    blocks,
+  };
+}
+
+// Convenience: full HTML doc string (used by Python wrapper / standalone)
+function renderFullDocument(text, opts = {}) {
+  const r = renderDocument(text, opts);
+  return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(r.title)}</title>${opts.cssHref ? `<link rel="stylesheet" href="${opts.cssHref}">` : ""}</head><body class="mdp-doc"><div class="mdp-layout">${r.sidebarHtml}<main class="mdp-main"><header class="mdp-doc-header"><h1>${esc(r.title)}</h1>${r.intro}</header>${r.mainHtml}</main></div>${opts.jsHref ? `<script src="${opts.jsHref}"><\/script>` : ""}</body></html>`;
+}
+
+// ===== INLINED: kitchen-sink sample =====
+const __KITCHEN_SINK__ = `# Q1 2026 Auth Service Review
+
+涵蓋現況、決策、KPI、issue、歷史與後續行動。本文件作為 Markdown+ 視覺元素的展示樣本。
+
+- **#intro** \`type:note\` \`priority:normal\` \`updated:2026-05-13\`
+  本檔示範 Markdown+ 在實際 service review 場景下的呈現方式,包含 KPI、gauge、表格、對話、變體、Mermaid、callout 等元素。
+
+- **#exec-dashboard** \`type:dashboard\` \`layout:grid\` \`period:2026-Q1\`
+
+  *Dashboard: Q1 Auth Service 重點指標*
+
+  - **#sla-kpi** \`type:kpi\` \`metric:API_SLA\` \`value:99.92\` \`unit:%\` \`target:99.95\` \`delta:-0.03\` \`status:behind\`
+    API SLA 99.92%,目標 99.95%,本季因 5/3 outage 扣分 0.03 個百分點。
+
+  - **#latency-kpi** \`type:kpi\` \`metric:p99_latency\` \`value:218\` \`unit:ms\` \`target:250\` \`delta:-12\` \`status:on-track\`
+    p99 latency 218ms,優於 250ms 目標,本季較上季降 12ms。
+
+  - **#error-kpi** \`type:kpi\` \`metric:error_rate\` \`value:0.38\` \`unit:%\` \`target:0.5\` \`delta:-0.07\` \`status:on-track\`
+    錯誤率 0.38%,優於 0.5% SLO。
+
+  - **#mttr-kpi** \`type:kpi\` \`metric:MTTR\` \`value:22\` \`unit:min\` \`target:30\` \`delta:-5\` \`status:on-track\`
+    MTTR 22 分鐘,優於 30 分鐘目標。
+
+- **#sla-gauge** \`type:gauge\` \`metric:API_SLA\` \`value:99.92\` \`unit:%\` \`min:99.0\` \`max:100\` \`target:99.95\` \`zones:[99.0:red,99.9:amber,99.95:green]\`
+
+  *Gauge: API SLA(目標 99.95%)*
+
+  目前落在 amber 區間(99.9–99.95)。距 green 區間還差 0.03 個百分點,
+  Q2 需把 5/3 那類 14 分鐘 outage 的數量歸零才能回到 green。
+
+- **#q1-targets** \`type:targets\` \`period:2026-Q1\`
+
+  *Targets: Q1 SLO 達成狀況*
+
+  | 指標            | Target  | Actual  | Status            | Trend         |
+  |-----------------|---------|---------|-------------------|---------------|
+  | API SLA         | 99.95%  | 99.92%  | \`status:behind\`   | \`trend:flat\`  |
+  | p99 latency     | <250ms  | 218ms   | \`status:on-track\` | \`trend:down\`  |
+  | Error rate      | <0.5%   | 0.38%   | \`status:on-track\` | \`trend:down\`  |
+  | MTTR            | <30m    | 22m     | \`status:on-track\` | \`trend:down2\` |
+
+  4 項指標中 3 項 on-track,僅 SLA 落後。改善方向見 \`#actions\`。
+
+- **#current-state** \`type:state\` \`status:active\` \`updated:2026-05-13\` \`tags:[domain:auth,module:gateway]\`
+  目前 Auth v2 在 production 運作,refresh token 由 gateway 統一處理,
+  三種 client(browser / mobile / server-to-server)各走不同 token 路徑。
+
+- **#arch-diagram** \`type:figure\` \`media:image\` \`alt:auth-three-tier-architecture\`
+
+  *Figure: Auth Service 三層架構*
+
+  ![Auth flow architecture](./diagrams/auth-arch.png)
+
+  圖中三層:Gateway(rate limit + auth)、Token Service(簽發/驗證)、Identity DB
+  (使用者主檔)。Browser 走 httpOnly cookie、mobile 走 signed JWT、
+  server-to-server 走 mTLS。
+
+- **#refresh-flow** \`type:diagram\` \`diagram-type:mermaid\`
+
+  *Figure: Token refresh 流程*
+
+  \`\`\`mermaid
+  sequenceDiagram
+      participant C as Client
+      participant G as Gateway
+      participant T as Token Service
+      C->>G: request with expired access token
+      G->>T: validate refresh token
+      T-->>G: new access token (15m TTL)
+      G-->>C: 200 + new access token
+  \`\`\`
+
+  refresh 流程從 client 看是透明的,gateway 自動換 token,client 只感知重試一次。
+
+> [!IMPORTANT]
+> 5/3 那次 outage 與 token service memory leak 有關,詳見 \`#inc-2026-05-03\`,
+> hotfix PR 已 merge 至 main,canary 部署中。
+
+- **#decision-canary** \`type:decision\` \`status:accepted\` \`updated:2026-05-13\` \`owner:platform-team\` \`tags:[domain:auth,strategy:deployment]\`
+  自 2026-Q2 起 Token Service 採 **canary deployment** 策略,
+  10% 流量灰度 → 30% → 100%。理由:5/3 outage 顯示全量部署風險過高,
+  且 token 邏輯異動偵測延遲可達 2 分鐘。
+
+- **#inc-2026-05-03** \`type:record\` \`status:active\` \`priority:high\` \`tags:[domain:auth,incident:outage]\` \`updated:2026-05-03\`
+
+  *Record: 2026-05-03 Token Service Outage*
+
+  | 時間 (UTC) | 事件                                |
+  |------------|-------------------------------------|
+  | 03:14      | Token Service memory 突破 7.5GB     |
+  | 03:16      | p99 latency 飆至 2.4s,oncall paged  |
+  | 03:18      | Auto-restart 觸發,服務恢復          |
+  | 03:28      | 全面恢復,後續監控 4 hr 無復發       |
+
+  影響:14 分鐘 partial outage,約 8% 請求失敗。根因:JWT cache 未設上限,
+  累積後 OOM。修正:設 LRU cache size = 100k、加 memory alert 在 6GB。
+
+- **#install-steps** \`type:spec\`
+
+  client SDK 安裝方式,依語言環境選擇。
+
+  - **#install-py** \`type:step\` \`variant-group:install\` \`variant:python\`
+
+    *Listing: Python SDK 安裝*
+
+    \`\`\`bash
+    pip install auth-sdk
+    \`\`\`
+
+    Python 3.10+ 透過 pip 安裝,自動帶 \`httpx\` 與 \`pyjwt\` 依賴。
+
+  - **#install-js** \`type:step\` \`variant-group:install\` \`variant:javascript\`
+
+    *Listing: JavaScript SDK 安裝*
+
+    \`\`\`bash
+    npm install @company/auth-sdk
+    \`\`\`
+
+    支援 Node 18+ 與現代瀏覽器(透過 esm build)。
+
+  - **#install-go** \`type:step\` \`variant-group:install\` \`variant:go\`
+
+    *Listing: Go SDK 安裝*
+
+    \`\`\`bash
+    go get github.com/company/auth-sdk-go
+    \`\`\`
+
+    需 Go 1.21+,使用 generics 簡化 token type 推導。
+
+- **#interview-mobile-team** \`type:dialogue\` \`participants:[ann,bob]\` \`source:interview-2026-05-08\`
+
+  訪談 Mobile team Bob 關於 Auth v2 整合痛點。
+
+  - **#turn-1** \`type:turn\` \`speaker:ann\` \`time:14:02\`
+    > Mobile 整合 Auth v2 最大的痛點是什麼?
+
+  - **#turn-2** \`type:turn\` \`speaker:bob\` \`time:14:02\`
+    > 錯誤訊息太抽象。"Invalid request" 但不告訴我是哪個欄位,
+    > trace ID 也沒回傳,沒辦法 escalate。
+
+  - **#turn-3** \`type:turn\` \`speaker:ann\` \`time:14:04\`
+    > SDK 那邊呢?
+
+  - **#turn-4** \`type:turn\` \`speaker:bob\` \`time:14:05\`
+    > TypeScript types 跟 OpenAPI spec 對不上,有時候少欄位,
+    > 得自己手動補。希望有 codegen pipeline。
+
+- **#issue-error-msg** \`type:issue\` \`status:open\` \`priority:high\` \`owner:auth-team\` \`accent:warning\` \`tags:[domain:auth,client:all]\`
+  錯誤訊息缺乏可操作性(來源 \`#interview-mobile-team\`):
+  (1) 無欄位粒度錯誤碼;(2) 無 trace ID;(3) 文件未列舉錯誤型態。
+  影響三類 client。Target fix:Q2 W4。
+
+- **#issue-sdk-drift** \`type:issue\` \`status:open\` \`priority:normal\` \`owner:dx-team\` \`accent:warning\`
+  TypeScript SDK 與 OpenAPI spec 漂移。需要建立 codegen pipeline 並
+  在 CI 加 schema diff gate。
+
+- **#actions** \`type:task\` \`owner:platform-team\`
+
+  Q2 行動項目。
+
+  - **#action-canary** \`type:task\` \`status:open\` \`owner:alice\` \`valid-until:2026-06-30\`
+    完成 Token Service canary deployment 上線,目標 2026-06-30。
+
+  - **#action-fix-errors** \`type:task\` \`status:open\` \`owner:bob\` \`valid-until:2026-06-15\`
+    重構錯誤回應:加 field-level error code + trace_id,文件補錯誤目錄。
+
+  - **#action-codegen** \`type:task\` \`status:blocked\` \`owner:carol\`
+    建立 TypeScript SDK 自動 codegen pipeline。Blocked on OpenAPI spec
+    完整性審查(Spec team 處理中)。
+
+  - **#action-monitoring** \`type:task\` \`status:done\` \`owner:dave\`
+    Token Service memory alert 已上線(6GB warning、7GB critical)。
+
+- **#related-docs** \`type:reference\` \`related:[decision-canary,inc-2026-05-03]\`
+
+  相關文件:
+  - Token Service spec: \`./specs/token-service-v2.md\`
+  - Incident 2026-05-03 full report: \`./incidents/2026-05-03-token-oom.md\`
+  - Auth v2 migration runbook: \`./runbooks/auth-v2-migration.md\`
+
+- **#auth-v1-history** \`type:history\` \`status:deprecated\` \`superseded-by:current-state\` \`updated:2026-02-15\` \`visibility:collapsed\` \`tags:[domain:auth,archive]\`
+
+  Auth v1 歷史記錄。
+
+  - **#auth-v1-design** \`type:history\` \`status:deprecated\` \`superseded-by:current-state\` \`visibility:collapsed\`
+    Auth v1 把 access token 直接放在 cookie(無 httpOnly flag),
+    refresh 邏輯由各 service 各自實作,缺乏統一 rotation 策略。
+    2026-02-15 棄用,所有流量遷移至 Auth v2。
+
+  - **#auth-v1-known-issues** \`type:history\` \`status:deprecated\` \`superseded-by:current-state\` \`visibility:collapsed\`
+    已知問題(已隨 v2 解決):
+    (1) Token 不 rotate → 長期暴露風險;
+    (2) Cross-service refresh 不一致;
+    (3) Mobile 無 secure storage。
+`;
+// ===== INLINED: rewriter prompts =====
+const __PROMPT_FROM_MARKDOWN__ = `你是 Markdown+ 改寫器。把下方輸入的標準 Markdown 文件改寫為 Markdown+ 格式。
+
+【Markdown+ 核心規則】
+
+1. 純 Markdown + 三個習慣:
+   - 每個語義獨立章節寫成 bullet list item,開頭 \`**#kebab-case-id**\` + inline code \`key:value\` metadata
+   - 二進位媒體 (圖、影、SVG、大型 chart spec) 一律外部相對路徑,絕不 base64
+   - 每個 figure / table / chart / KPI / gauge 必須有一段散文 prose companion
+
+2. 文件骨架:
+   \`\`\`
+   # 文件標題
+
+   一段引言純散文。
+
+   - **#block-id** \`type:state\` \`status:active\` \`updated:2026-05-13\`
+     block body 縮排 2 spaces。
+
+     - **#child-id** \`type:note\`
+       子 block 縮排 4 spaces。
+   \`\`\`
+
+3. 不可使用:
+   - \`:::\` fence directive
+   - raw HTML (除 \`<br>\` \`<hr>\` \`<sub>\` \`<sup>\`)
+   - inline base64 / data URI / inline SVG
+   - 寫死的 caption 編號 (\`Figure 1:\` \`Table 2:\` 等,只寫 \`*Figure: ...*\`)
+
+4. \`type:\` 受控字彙表(必須從此選):
+   \`state\` \`history\` \`decision\` \`record\` \`issue\` \`note\` \`spec\` \`task\` \`reference\`
+   \`figure\` \`table\` \`chart\` \`kpi\` \`card\` \`gauge\` \`targets\` \`dashboard\`
+   \`dialogue\` \`turn\` \`step\` \`diagram\`
+   (擴充必須用 \`x-\` 前綴)
+
+5. \`status:\` 受控字彙表:
+   \`draft\` \`active\` \`proposed\` \`accepted\` \`rejected\` \`superseded\` \`deprecated\`
+   \`archive\` \`healthy\` \`degraded\` \`down\` \`on-track\` \`behind\` \`exceeded\`
+   \`done\` \`blocked\` \`open\` \`closed\`
+
+6. 約束關係(必須):
+   - \`status:deprecated\` / \`superseded\` 必有 \`superseded-by:<id>\`
+   - \`type:history\` 必有 \`visibility:collapsed\`
+   - sibling 共用 \`variant-group:\` 時,每個 \`variant:\` 必須不同
+   - \`type:kpi\` 必有 \`value:\`,數字必與 prose 段一致
+   - \`type:gauge\` 必有 \`value:\` \`min:\` \`max:\` \`target:\` \`zones:\`
+
+7. Caption 慣例:
+   - 表格、code、圖、影片上方緊鄰一行 \`*Table: ...*\` / \`*Listing: ...*\` / \`*Figure: ...*\` / \`*Chart: ...*\` / \`*Demo: ...*\`
+   - 永不寫編號,viewer 自動編號
+
+8. 表格 > 30 列 → 強制 \`data-source:./data/<name>.csv\`,只在文件內留 schema 摘要 + prose。
+
+9. ID 命名:kebab-case,文件內唯一,語義鎖死。
+
+10. metadata 寫成 inline code,順序建議:identity → lifecycle → visibility → taxonomy → type-specific。
+
+【改寫要求】
+- 保留原文事實,不增刪資訊。
+- 直接輸出 Markdown+ 文件,不要前言、不要說明、不要包進 code fence。
+
+【輸入 Markdown 文件】
+{{markdown_doc}}
+`;
+const __PROMPT_FROM_HTML__ = `你是 Markdown+ 改寫器。把下方輸入的 HTML 文件改寫為 Markdown+ 格式。
+
+【Markdown+ 核心規則】(與從 Markdown 改寫相同)
+
+請見 \`from_markdown.txt\`。這裡只列 HTML→Markdown+ 的補充規則。
+
+【HTML 預處理(刪除這些)】
+- \`<script>\` \`<style>\` 整段刪除
+- \`class=""\` \`style=""\` \`data-*\`(除非 \`data-status\` / \`data-type\` 等是 semantic signal)
+- \`<nav>\` \`<header>\` \`<footer>\` (layout 元件,刪除)
+- 純包裝的 \`<div>\` \`<span>\`,解包只留 inner content
+
+【HTML semantic → Markdown+ type 對照】
+- \`<article>\` → 文件
+- \`<section>\` → \`type:state\` / \`spec\` / \`record\` (依內容判斷)
+- \`<aside class="warning">\` → \`type:issue\` \`accent:warning\`
+- \`<aside class="info">\` → \`type:note\`
+- \`<details>\` → \`visibility:collapsed\`
+- \`<figure>\` + \`<figcaption>\` → \`type:figure\`,figcaption 變 \`*Figure: ...*\`
+- \`<table>\` + \`<caption>\` → \`type:table\`,caption 變 \`*Table: ...*\`
+- \`<blockquote cite="...">\` → blockquote + \`source:\` metadata
+- \`<time datetime="...">\` → 抽進 \`updated:\`
+- \`<dl>\` → 改成 table 或 bullet list
+
+【HTML 危險訊號(必須處理)】
+- \`<img src="data:...;base64,...">\` → **停止**,提示需要外部檔案路徑
+- inline \`<svg>\` → **停止**,提示需要外部 .svg 檔
+- 巨型 JS chart config (Highcharts/Chart.js/plotly) → 拆到 \`./charts/<name>.json\`,inline 改成 \`chart-type:\` 引用
+
+【KPI / Dashboard HTML 對照】
+HTML:
+\`\`\`
+<div class="kpi-card">
+  <div class="metric-name">MRR</div>
+  <div class="metric-value">$1.2M</div>
+  <div class="metric-target">Target $1.5M</div>
+  <div class="metric-delta positive">+12%</div>
+</div>
+\`\`\`
+轉成:
+\`\`\`
+- **#mrr-kpi** \`type:kpi\` \`metric:MRR\` \`value:1.2M\` \`target:1.5M\` \`delta:+12%\`
+  MRR $1.2M,target $1.5M,達成 80%,較上季 +12%。
+\`\`\`
+注意:**必加 prose 段**,因為 HTML 卡片有視覺,Markdown+ source 沒有,prose 要補足語義。
+
+【Tab UI / Accordion 對照】
+- 各 tab pane → 各 sibling block 共用 \`variant-group:\`,各自 \`variant:\`
+- 各 accordion panel → 各 block,適用時加 \`visibility:collapsed\`
+
+【改寫要求】
+- 保留原文事實。
+- 直接輸出 Markdown+ 文件,不要前言、不要說明、不要包 code fence。
+
+【輸入 HTML 文件】
+{{html_doc}}
+`;
+
+  // ---- DOM refs ----
+  const tabs = document.querySelectorAll(".pg-segmented button");
+  const panels = document.querySelectorAll(".pg-panel");
+  const editor = document.getElementById("editor");
+  const preview = document.getElementById("preview");
+  const globalStatus = document.getElementById("global-status");
+  const blockCount = document.getElementById("block-count");
+  const lineCount = document.getElementById("editor-line-count");
+  const drawer = document.getElementById("drawer");
+  const drawerHead = document.getElementById("drawer-head");
+  const drawerBody = document.getElementById("drawer-body");
+  const drawerSummary = document.getElementById("drawer-summary");
+  const sampleReset = document.getElementById("sample-reset");
+
+  // ---- Persistence ----
+  const LS_KEY = "mdp:playground:source";
+  const LS_TAB = "mdp:playground:tab";
+
+  // ---- Default sample fallback ----
+  const FALLBACK_SAMPLE = `# Markdown+ Demo
+
+簡短示範核心 block type。
+
+- **#current-state** \`type:state\` \`status:active\` \`updated:2026-05-13\`
+  目前 Auth v2 在 production 運作。
+
+- **#mrr-kpi** \`type:kpi\` \`metric:MRR\` \`value:1.2M\` \`target:1.5M\` \`delta:+12%\`
+  MRR 1.2M USD,Q1 達成 80%,較上季 +12%。
+
+- **#auth-v1** \`type:history\` \`status:deprecated\` \`superseded-by:current-state\` \`visibility:collapsed\`
+  Auth v1 已棄用。
+`;
+
+  // ---- Tab switching ----
+  function activateTab(name) {
+    tabs.forEach(b => {
+      const isActive = b.dataset.tab === name;
+      b.classList.toggle("active", isActive);
+      b.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    panels.forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+    try { localStorage.setItem(LS_TAB, name); } catch (e) {}
+  }
+  tabs.forEach(btn => btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
+
+  // ---- Drawer toggle ----
+  function setDrawer(open) {
+    drawer.classList.toggle("collapsed", !open);
+    drawerHead.setAttribute("aria-expanded", String(open));
+  }
+  drawerHead.addEventListener("click", () => setDrawer(drawer.classList.contains("collapsed")));
+  drawerHead.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setDrawer(drawer.classList.contains("collapsed"));
+    }
+  });
+
+  // ---- Helpers ----
+  function escapeHtml(s) {
+    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+  }
+
+  function bindPreviewTocAndScrollSpy() {
+    // 1) intercept TOC anchor clicks → smooth scroll inside the preview container
+    const tocAnchors = preview.querySelectorAll(".mdp-sidebar a[href^='#'], .mdp-toc-inline a[href^='#']");
+    tocAnchors.forEach(a => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const id = a.getAttribute("href").slice(1);
+        if (!id) return;
+        const target = preview.querySelector("#" + CSS.escape(id));
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    // 2) scroll-spy via IntersectionObserver scoped to the preview pane
+    if (previewObserver) {
+      try { previewObserver.disconnect(); } catch (e) {}
+    }
+    const sidebarLinks = preview.querySelectorAll(".mdp-sidebar a[data-toc-target]");
+    if (sidebarLinks.length === 0) return;
+    const linkById = new Map();
+    sidebarLinks.forEach(a => linkById.set(a.getAttribute("data-toc-target"), a));
+    previewObserver = new IntersectionObserver((entries) => {
+      const intersecting = entries.filter(en => en.isIntersecting);
+      if (intersecting.length === 0) return;
+      intersecting.sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+      const id = intersecting[0].target.id;
+      if (!id) return;
+      sidebarLinks.forEach(l => l.classList.remove("mdp-toc-active"));
+      const link = linkById.get(id);
+      if (link) link.classList.add("mdp-toc-active");
+    }, {
+      root: preview,
+      rootMargin: "-10% 0px -70% 0px",
+      threshold: [0, 0.1, 0.5, 1.0],
+    });
+    linkById.forEach((_link, id) => {
+      const el = preview.querySelector("#" + CSS.escape(id));
+      if (el) previewObserver.observe(el);
+    });
+  }
+
+  function bindPreviewRuntime() {
+    preview.querySelectorAll(".mdp-tabs").forEach(t => {
+      const btns = t.querySelectorAll(".mdp-tab-btn");
+      const panels = t.querySelectorAll(".mdp-tab-panel");
+      btns.forEach(btn => {
+        btn.onclick = () => {
+          const target = btn.dataset.target;
+          btns.forEach(b => {
+            b.classList.toggle("mdp-tab-active", b === btn);
+            b.setAttribute("aria-selected", b === btn ? "true" : "false");
+          });
+          panels.forEach(p => p.classList.toggle("mdp-tab-active", p.id === target));
+        };
+      });
+    });
+    preview.querySelectorAll(".mdp-copy").forEach(btn => {
+      btn.onclick = () => {
+        const code = btn.parentElement.querySelector("code");
+        if (code && navigator.clipboard) {
+          navigator.clipboard.writeText(code.innerText).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = "Copied";
+            setTimeout(() => btn.textContent = orig, 1200);
+          });
+        }
+      };
+    });
+  }
+
+  // ---- Mermaid loader (CDN, async, graceful fallback if offline) ----
+  let _mermaid = null;
+  let _mermaidLoading = null;
+  function ensureMermaid() {
+    if (_mermaid) return Promise.resolve(_mermaid);
+    if (_mermaidLoading) return _mermaidLoading;
+    _mermaidLoading = import("https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs")
+      .then(mod => {
+        const mermaid = mod.default || mod;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "default",
+          securityLevel: "loose",
+          fontFamily: "system-ui, sans-serif",
+        });
+        _mermaid = mermaid;
+        return mermaid;
+      })
+      .catch(e => {
+        console.warn("Mermaid CDN load failed:", e);
+        _mermaidLoading = null;
+        return null;
+      });
+    return _mermaidLoading;
+  }
+
+  let mermaidRunSeq = 0;
+  async function runMermaid() {
+    const mySeq = ++mermaidRunSeq;
+    const nodes = Array.from(preview.querySelectorAll("pre.mermaid:not([data-mermaid-done])"));
+    if (nodes.length === 0) return;
+    const mermaid = await ensureMermaid();
+    if (!mermaid || mySeq !== mermaidRunSeq) return;  // user typed something newer, abort
+    // Mermaid 10 mutates nodes in place; mark and assign IDs.
+    nodes.forEach((n, i) => {
+      n.setAttribute("data-mermaid-done", "1");
+      if (!n.id) n.id = `mermaid-${Date.now()}-${i}`;
+    });
+    try {
+      await mermaid.run({ nodes });
+    } catch (e) {
+      console.warn("Mermaid render error:", e);
+    }
+  }
+
+  // ---- Main update loop ----
+  let previewObserver = null;
+
+  function update() {
+    const text = editor.value;
+    const v = validate(text);
+    const r = renderDocument(text, { title: "Preview" });
+    preview.innerHTML = `<div class="mdp-layout">${r.sidebarHtml || ""}<main class="mdp-main"><header class="mdp-doc-header"><h1>${escapeHtml(r.title)}</h1>${r.intro}</header>${r.mainHtml}</main></div>`;
+    bindPreviewTocAndScrollSpy();
+    bindPreviewRuntime();
+    runMermaid();
+
+    // Stats
+    blockCount.textContent = v.blocks.length + " blocks";
+    lineCount.textContent = text.split("\n").length + " lines";
+
+    // Status
+    const errs = v.issues.filter(x => x.severity === "error");
+    const warns = v.issues.filter(x => x.severity === "warning");
+    const nE = errs.length, nW = warns.length;
+    globalStatus.className = "pg-status " + (nE > 0 ? "err" : nW > 0 ? "warn" : "ok");
+    globalStatus.textContent = (nE > 0 ? "FAIL" : "PASS") +
+      " · " + v.blocks.length + " blocks" +
+      (nE > 0 ? ` · ${nE} err` : "") +
+      (nW > 0 ? ` · ${nW} warn` : "");
+
+    // Drawer
+    drawerSummary.textContent = `${nE} errors · ${nW} warnings` +
+      (nE + nW === 0 ? " · all clean" : " · click to " + (drawer.classList.contains("collapsed") ? "expand" : "collapse"));
+    drawerBody.innerHTML = v.issues.slice(0, 80).map(x => `
+      <div class="pg-issue ${x.severity === "error" ? "err" : "warn"}">
+        <span class="lineno">L${x.line}</span>
+        <span class="code-id">${escapeHtml(x.code)}</span>
+        <span>${escapeHtml(x.message)}</span>
+      </div>
+    `).join("");
+
+    // Auto-expand if errors
+    if (nE > 0) setDrawer(true);
+    else if (nE === 0 && nW === 0) setDrawer(false);
+
+    // Persist
+    try { localStorage.setItem(LS_KEY, text); } catch (e) {}
+  }
+
+  let debounceTimer = null;
+  editor.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(update, 200);
+  });
+
+  // ---- Sample loading ----
+  async function loadSample() {
+    return __KITCHEN_SINK__;
+  }
+
+  async function init() {
+    // Restore tab
+    try {
+      const t = localStorage.getItem(LS_TAB);
+      if (t) activateTab(t);
+    } catch (e) {}
+
+    // Restore source or load sample
+    let src = null;
+    try { src = localStorage.getItem(LS_KEY); } catch (e) {}
+    if (!src || !src.trim()) src = await loadSample();
+    editor.value = src;
+    update();
+  }
+
+  sampleReset.addEventListener("click", async () => {
+    if (editor.value.trim() && !confirm("確定要丟掉目前內容,改載入預設範例?")) return;
+    editor.value = await loadSample();
+    try { localStorage.removeItem(LS_KEY); } catch (e) {}
+    update();
+  });
+
+  // ---- File loader (from local disk via <input type="file">) ----
+  // Target depends on current tab: Editor+Viewer → editor; Rewriter → rewriter input
+  const fileLoad = document.getElementById("file-load");
+  const fileInput = document.getElementById("file-input");
+
+  function activeLoadTarget() {
+    const rewriterPanel = document.getElementById("panel-rewriter");
+    if (rewriterPanel && rewriterPanel.classList.contains("active")) {
+      return { textarea: document.getElementById("rewriter-input"), afterLoad: null, label: "改寫輸入" };
+    }
+    return { textarea: editor, afterLoad: update, label: "Editor" };
+  }
+
+  // Live-update the button label so the user always sees where the file will go
+  function updateFileLoadLabel() {
+    const t = activeLoadTarget();
+    fileLoad.title = `從本機載入 .md / .mdp.md / .txt 文件到「${t.label}」`;
+    const labelSpan = fileLoad.querySelector("span");
+    if (labelSpan) labelSpan.textContent = `載入檔案至 ${t.label}`;
+  }
+  updateFileLoadLabel();
+  document.querySelectorAll(".pg-segmented button").forEach(b => {
+    b.addEventListener("click", () => setTimeout(updateFileLoadLabel, 0));
+  });
+
+  fileLoad.addEventListener("click", () => {
+    const t = activeLoadTarget();
+    if (t.textarea.value.trim() && !confirm(`確定要丟掉「${t.label}」目前的內容,改載入選取的檔案?`)) return;
+    fileInput.click();
+  });
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    const t = activeLoadTarget();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = String(e.target.result || "");
+      t.textarea.value = text;
+      t.textarea.focus();
+      if (t.afterLoad) t.afterLoad();
+    };
+    reader.onerror = () => alert("讀取檔案失敗:" + (reader.error && reader.error.message || "unknown"));
+    reader.readAsText(f, "utf-8");
+    fileInput.value = "";  // allow re-selecting the same file later
+  });
+
+  // ---- Drag & drop file onto editor ----
+  editor.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  editor.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (editor.value.trim() && !confirm("拖入檔案會取代目前內容,確定?")) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      editor.value = String(ev.target.result || "");
+      update();
+    };
+    reader.readAsText(f, "utf-8");
+  });
+
+  // ---- Rewriter (LLM via backend /api/rewrite) ----
+  const rwIn = document.getElementById("rewriter-input");
+  const rwOut = document.getElementById("rewriter-output");
+  const rwFrom = document.getElementById("rewriter-from");
+  const rwStatus = document.getElementById("rewriter-status");
+  const rwRunBtn = document.getElementById("rewriter-run");
+
+  // Track rewrite service readiness — gate the run button on it.
+  let rewriteReady = false;
+
+  function setRewriteStatus(ok, message, isError) {
+    rewriteReady = !!ok;
+    rwRunBtn.disabled = !ok;
+    rwRunBtn.title = ok ? "" : message;
+    rwStatus.textContent = message;
+    rwStatus.style.color = isError ? "var(--err)" : "";
+  }
+
+  // Diagnose the current environment and the rewrite service.
+  (async () => {
+    const proto = window.location.protocol;
+    const host = window.location.hostname;
+
+    // Case 1: file:// — page opened by double-click, no server at all
+    if (proto === "file:") {
+      setRewriteStatus(false,
+        "目前以檔案模式開啟,改寫功能需要透過 python serve.py 啟動。指令:python serve.py,然後開啟 http://localhost:8000/website/playground.html",
+        true);
+      return;
+    }
+
+    // Case 2: opened in a sandboxed preview (no real HTTP host)
+    if (!host || proto === "about:") {
+      setRewriteStatus(false,
+        "目前在預覽環境中,改寫功能需要實際啟動 python serve.py 並從 http://localhost:8000/ 開啟此頁",
+        true);
+      return;
+    }
+
+    // Case 3: on a real HTTP host — ask /api/health to confirm rewrite service exists
+    try {
+      const r = await fetch("/api/health");
+      const ct = r.headers.get("content-type") || "";
+      if (!r.ok || !ct.includes("application/json")) {
+        setRewriteStatus(false,
+          "改寫服務未就緒。網站已載入但 /api/health 不存在,代表啟動的不是 python serve.py(可能是 python -m http.server)。請改用 python serve.py 後重新開啟。",
+          true);
+        return;
+      }
+      const h = await r.json();
+      if (!h.has_key) {
+        setRewriteStatus(false,
+          "改寫服務啟動了但缺 OPENAI_API_KEY 環境變數。請 set OPENAI_API_KEY=sk-... 後重啟 python serve.py。",
+          true);
+        return;
+      }
+      setRewriteStatus(true,
+        `改寫服務就緒 · model: ${h.model} · effort: ${h.effort}`,
+        false);
+    } catch (e) {
+      setRewriteStatus(false,
+        "無法連到改寫服務:" + e.message + "。請確認 python serve.py 仍在執行。",
+        true);
+    }
+  })();
+
+  rwRunBtn.addEventListener("click", async () => {
+    if (!rewriteReady) return;
+    const kind = rwFrom.value;
+    const content = rwIn.value;
+    if (!content.trim()) { rwStatus.textContent = "輸入為空"; rwStatus.style.color = ""; return; }
+
+    rwStatus.style.color = "";
+    rwStatus.textContent = "連線中…";
+    rwRunBtn.disabled = true;
+    rwOut.value = "";
+    const t0 = performance.now();
+
+    // Live "thinking" indicator while waiting for first delta
+    let firstDeltaSeen = false;
+    let thinkingTimer = setInterval(() => {
+      if (firstDeltaSeen) return;
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      rwStatus.textContent = `LLM 思考中… ${elapsed}s`;
+    }, 200);
+
+    try {
+      const r = await fetch("/api/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: kind, content }),
+      });
+      const ct = r.headers.get("content-type") || "";
+      const streamFmt = r.headers.get("x-stream-format") || "";
+      const isStream = streamFmt === "ndjson"
+        || ct.includes("application/x-ndjson")
+        || (ct.includes("text/plain") && r.body);
+
+      // Non-stream failure response
+      if (!isStream) {
+        if (ct.includes("application/json")) {
+          const data = await r.json();
+          rwStatus.textContent = `失敗 (${r.status}):${data.error || "unknown"}`;
+        } else {
+          rwStatus.textContent = "改寫服務未就緒。確認啟動的是 python serve.py,且網頁與 server 同源(都用 localhost:8000,不要混用 127.0.0.1)。";
+        }
+        rwStatus.style.color = "var(--err)";
+        return;
+      }
+
+      // Stream NDJSON
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buf = "";
+      let totalDeltas = 0;
+      let meta = null;
+      let streamError = null;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          let msg;
+          try { msg = JSON.parse(line); } catch (e) { continue; }
+          if (msg.type === "delta") {
+            firstDeltaSeen = true;
+            rwOut.value += msg.delta;
+            rwOut.scrollTop = rwOut.scrollHeight;
+            totalDeltas++;
+            // Throttle status update to every 50ms feel
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            rwStatus.textContent = `串流中… ${rwOut.value.length} chars · ${elapsed}s`;
+          } else if (msg.type === "done") {
+            meta = msg;
+          } else if (msg.type === "error") {
+            streamError = msg.error;
+          } else if (msg.type === "start") {
+            rwStatus.textContent = `LLM 開始輸出… (${msg.model})`;
+          }
+        }
+      }
+
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      if (streamError) {
+        rwStatus.textContent = `串流中斷:${streamError}`;
+        rwStatus.style.color = "var(--err)";
+      } else if (meta) {
+        rwStatus.textContent = `完成 · ${elapsed}s · ${meta.model || ""} · ${meta.output_tokens || 0} tokens`;
+      } else {
+        rwStatus.textContent = `完成 · ${elapsed}s · (無 metadata)`;
+      }
+    } catch (e) {
+      rwStatus.textContent = "網路錯誤:" + e.message + "(確認 python serve.py 仍在執行)";
+      rwStatus.style.color = "var(--err)";
+    } finally {
+      clearInterval(thinkingTimer);
+      rwRunBtn.disabled = !rewriteReady;
+    }
+  });
+
+  document.getElementById("rewriter-push").addEventListener("click", () => {
+    if (!rwOut.value.trim()) { rwStatus.textContent = "輸出為空"; return; }
+    editor.value = rwOut.value;
+    activateTab("editor");
+    update();
+  });
+
+  // ---- Per-pane fullscreen toggle ----
+  function exitAllFullscreen() {
+    document.querySelectorAll(".is-fullscreen").forEach(el => el.classList.remove("is-fullscreen"));
+    document.body.classList.remove("has-fullscreen-pane");
+  }
+  document.querySelectorAll("[data-pane-fs]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const pane = btn.closest(".pg-pane, .pg-rewriter-pane");
+      if (!pane) return;
+      const wasFs = pane.classList.contains("is-fullscreen");
+      exitAllFullscreen();
+      if (!wasFs) {
+        pane.classList.add("is-fullscreen");
+        document.body.classList.add("has-fullscreen-pane");
+      }
+    });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("has-fullscreen-pane")) {
+      exitAllFullscreen();
+    }
+  });
+
+  init();
+</script>
+
+</body>
+</html>

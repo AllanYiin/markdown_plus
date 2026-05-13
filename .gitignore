@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local config / secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+.openai-key
+
+# Output / logs
+*.log
+*.tmp
+*.cache
+output/
+out/
+results/
+
+# Notebooks (if any)
+.ipynb_checkpoints/

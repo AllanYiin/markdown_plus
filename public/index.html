@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown+ — AI 與人類都讀得舒服的文件格式</title>
+<style>
+/* ============================================================
+   Markdown+ Site — Light theme, saturated indigo nav.
+   Stage 0 baseline: design tokens, base styles, marketing components.
+   ============================================================ */
+
+/* ---- Design tokens ---- */
+:root {
+  /* Neutrals */
+  --bg:            #ffffff;
+  --bg-subtle:     #fafafa;
+  --surface:       #ffffff;
+  --surface-2:     #f1f5f9;
+  --surface-3:     #e2e8f0;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Text */
+  --text:          #0f172a;
+  --text-muted:    #475569;
+  --text-faint:    #94a3b8;
+
+  /* Accent — saturated indigo */
+  --accent:        #4f46e5;        /* indigo-600,  body / button bg */
+  --accent-deep:   #4338ca;        /* indigo-700,  nav bg */
+  --accent-hover:  #3730a3;        /* indigo-800 */
+  --accent-soft:   #eef2ff;        /* indigo-50,  tint surface */
+  --accent-on:     #ffffff;        /* text on accent */
+
+  /* Secondary accent — cyan for "+" and code highlights */
+  --accent-2:      #0891b2;        /* cyan-600 */
+  --accent-2-soft: #ecfeff;        /* cyan-50 */
+
+  /* Semantic */
+  --ok:            #16a34a;
+  --ok-soft:       #dcfce7;
+  --warn:          #d97706;
+  --warn-soft:     #fef3c7;
+  --err:           #dc2626;
+  --err-soft:      #fee2e2;
+
+  /* Code surface (always dark for legibility) */
+  --code-bg:       #0f172a;
+  --code-text:     #e2e8f0;
+  --code-muted:    #94a3b8;
+  --code-keyword:  #c4b5fd;
+  --code-string:   #86efac;
+  --code-comment:  #64748b;
+
+  /* Typography */
+  --font-sans: "Inter", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", "SF Mono", ui-monospace, Menlo,
+               Consolas, monospace;
+
+  /* Spacing scale (4-base) */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --sp-8:  64px;
+
+  /* Radius */
+  --r-sm:  4px;
+  --r-md:  8px;
+  --r-lg:  12px;
+  --r-xl:  16px;
+  --r-full: 999px;
+
+  /* Shadow */
+  --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --sh-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --sh-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --sh-accent: 0 4px 12px rgba(79, 70, 229, 0.25);
+
+  /* Motion */
+  --t-fast: 120ms ease-out;
+  --t-slow: 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---- Reset & Base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration: none; transition: color var(--t-fast); }
+a:hover { color: var(--accent-hover); }
+img { max-width: 100%; height: auto; }
+::selection { background: var(--accent-soft); color: var(--accent-deep); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ---- Nav (the signature element) ---- */
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--accent-deep);
+  color: var(--accent-on);
+  box-shadow: var(--sh-md);
+}
+.site-nav-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-5);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+.site-logo {
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--accent-on);
+  text-decoration: none;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.site-logo span {
+  color: #fbbf24;       /* amber-400, contrasts beautifully with indigo */
+  font-size: 24px;
+  line-height: 1;
+}
+.site-nav-links {
+  display: flex;
+  gap: var(--sp-2);
+  margin-left: auto;
+  font-size: 14px;
+}
+.site-nav-links a {
+  color: rgba(255, 255, 255, 0.78);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.site-nav-links a:hover {
+  color: var(--accent-on);
+  background: rgba(255, 255, 255, 0.1);
+}
+.site-nav-links a.active {
+  color: var(--accent-on);
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+}
+
+/* ---- Main containers ---- */
+main.site-main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5) var(--sp-8);
+}
+main.site-main.wide { max-width: 1320px; }
+main.site-main.bleed { max-width: none; padding: var(--sp-5); }
+
+/* ---- Hero ---- */
+.site-hero {
+  padding: var(--sp-8) 0 var(--sp-6);
+  text-align: center;
+}
+.site-hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 1.05;
+  margin: 0 0 var(--sp-4);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.site-hero h1 .accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.site-hero .lead {
+  font-size: 18px;
+  color: var(--text-muted);
+  max-width: 680px;
+  margin: 0 auto var(--sp-6);
+  line-height: 1.65;
+}
+.site-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---- Sections ---- */
+.site-section {
+  margin: var(--sp-7) 0;
+}
+.site-section h2 {
+  font-size: 30px;
+  margin: 0 0 var(--sp-3);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.site-section h3 {
+  font-size: 20px;
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+}
+.site-section p { margin: var(--sp-3) 0; }
+.site-section ul, .site-section ol { margin: var(--sp-3) 0; padding-left: 24px; }
+.site-section li { margin: var(--sp-2) 0; }
+
+/* ---- Buttons ---- */
+.site-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: var(--r-md);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+}
+.site-btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-on);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-accent);
+}
+.site-btn:active { transform: translateY(0); }
+.site-btn.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.site-btn.secondary:hover {
+  background: var(--surface-2);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+.site-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-deep);
+}
+.site-btn.ghost:hover { background: var(--accent-soft); box-shadow: none; }
+
+/* ---- Pillars (3-up cards on landing) ---- */
+.site-pillars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+}
+.site-pillar {
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.site-pillar:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+  border-color: var(--accent);
+}
+.site-pillar h3 {
+  font-size: 16px;
+  margin: 0 0 var(--sp-2);
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+.site-pillar p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ---- Code blocks ---- */
+pre.site-code {
+  font-family: var(--font-mono);
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: var(--sp-4) 0;
+  position: relative;
+  border: 1px solid #1e293b;
+}
+pre.site-code code { color: inherit; background: transparent; }
+code.site-code-inline {
+  font-family: var(--font-mono);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  font-size: 0.88em;
+  border: 1px solid transparent;
+}
+
+/* ---- Tables ---- */
+table.site-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: var(--sp-4) 0;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+table.site-table th, table.site-table td {
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+table.site-table thead th {
+  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border-strong);
+}
+table.site-table tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+table.site-table tbody tr:last-child td { border-bottom: none; }
+table.site-table tbody tr:hover td { background: var(--accent-soft); }
+
+/* ---- Footer ---- */
+footer.site-footer {
+  border-top: 1px solid var(--border);
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: var(--bg-subtle);
+}
+footer.site-footer .footer-mark {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+/* ---- Tutorial step badges ---- */
+.tutorial-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: var(--sp-2);
+  vertical-align: middle;
+}
+
+/* ---- Section bands (break up vertical stack) ---- */
+.band {
+  width: 100%;
+  padding: var(--sp-8) 0;
+}
+.band-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--sp-5);
+}
+.band-tight .band-inner { max-width: 880px; }
+.band-tinted {
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg-subtle) 100%);
+}
+.band-dotted {
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(67, 56, 202, 0.10) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.band-dark {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.35) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(8, 145, 178, 0.30) 0%, transparent 50%),
+    linear-gradient(180deg, #1e1b4b 0%, #0f172a 100%);
+  color: #e2e8f0;
+}
+.band-dark h2, .band-dark h3 { color: #ffffff; }
+.band-dark p { color: rgba(226, 232, 240, 0.8); }
+.band-dark a { color: #c4b5fd; }
+.band-dark code.site-code-inline {
+  background: rgba(255, 255, 255, 0.1);
+  color: #c4b5fd;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.band-accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: var(--accent-on);
+  text-align: center;
+  padding: var(--sp-7) 0;
+}
+.band-accent h2 { color: var(--accent-on); }
+.band-accent p { color: rgba(255, 255, 255, 0.85); }
+.band-accent .site-btn {
+  background: var(--accent-on);
+  color: var(--accent-deep);
+  border-color: var(--accent-on);
+}
+.band-accent .site-btn:hover {
+  background: #f5f3ff;
+  color: var(--accent-deep);
+  border-color: #f5f3ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* ---- Hero 2-col ---- */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: var(--sp-7);
+  align-items: center;
+  padding: var(--sp-7) 0 var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 960px) {
+  .hero-grid { grid-template-columns: 1fr; gap: var(--sp-5); padding: var(--sp-6) var(--sp-4); }
+}
+.hero-grid .hero-text { padding: 0 var(--sp-5); }
+.hero-grid h1 {
+  font-size: clamp(34px, 4.5vw, 52px);
+  line-height: 1.05;
+  margin: 0 0 var(--sp-4);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.hero-grid h1 .accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-grid .lead {
+  font-size: 17px;
+  color: var(--text-muted);
+  margin: 0 0 var(--sp-5);
+  line-height: 1.7;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--sp-3);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+.hero-tag .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+}
+
+/* ---- Mock browser window (hero visual) ---- */
+.mock-window {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  font-size: 12px;
+  transform: rotate(-1deg);
+  transition: transform var(--t-slow);
+  position: relative;
+}
+.mock-window:hover { transform: rotate(0) translateY(-2px); }
+.mock-window::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.25), transparent 70%);
+  pointer-events: none;
+}
+.mock-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.mock-chrome .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+}
+.mock-chrome .dot:nth-child(1) { background: #f87171; }
+.mock-chrome .dot:nth-child(2) { background: #fbbf24; }
+.mock-chrome .dot:nth-child(3) { background: #4ade80; }
+.mock-chrome .url {
+  margin-left: var(--sp-3);
+  padding: 3px 10px;
+  background: var(--surface);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  flex: 1;
+  max-width: 240px;
+}
+.mock-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 280px;
+}
+.mock-source {
+  padding: var(--sp-3);
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.75;
+  overflow: hidden;
+}
+.mock-source .kw { color: #c4b5fd; }
+.mock-source .meta { color: #67e8f9; }
+.mock-source .com { color: #94a3b8; }
+.mock-source .str { color: #86efac; }
+.mock-preview {
+  padding: var(--sp-3);
+  background: var(--surface);
+  font-size: 11px;
+  line-height: 1.6;
+  border-left: 1px solid var(--border);
+}
+.mock-preview .mock-block {
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--sp-2);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+.mock-preview .mock-block-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mock-preview .mock-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 9px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mock-preview .mock-pill.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.mock-preview .mock-pill.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.mock-preview .mock-kpi {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.mock-preview .mock-kpi-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mock-preview .mock-text {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---- 2-col compare ---- */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+}
+@media (max-width: 720px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
+.compare-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  box-shadow: var(--sh-sm);
+}
+.compare-card h3 {
+  margin: 0 0 var(--sp-3);
+  font-size: 18px;
+  color: var(--accent-deep);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.compare-card .label {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.compare-card .label.bad {
+  background: var(--err-soft);
+  color: var(--err);
+}
+.compare-card .label.good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.compare-card.bad-card { border-left: 4px solid var(--err); }
+.compare-card.good-card { border-left: 4px solid var(--ok); }
+
+/* ---- Feature grid (2x3) ---- */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 720px) {
+  .feature-grid { grid-template-columns: 1fr; }
+}
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.feature-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-md);
+  border-color: var(--accent);
+}
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  margin-bottom: var(--sp-3);
+}
+.feature-card h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+.feature-card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ---- Side-by-side example block ---- */
+.example-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 720px) {
+  .example-split { grid-template-columns: 1fr; }
+}
+.example-split > * { min-width: 0; }
+.example-split .example-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-2);
+}
+
+/* ---- Docs layout (sidebar + content) ---- */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--sp-6);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-8);
+}
+@media (max-width: 960px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+    padding: var(--sp-4);
+  }
+  .docs-sidebar { position: static !important; }
+}
+.docs-sidebar {
+  position: sticky;
+  top: calc(56px + var(--sp-4));
+  align-self: start;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.docs-sidebar h4 {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--sp-2);
+  font-weight: 700;
+}
+.docs-sidebar ol {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--sp-4);
+}
+.docs-sidebar li { margin: 2px 0; }
+.docs-sidebar a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.docs-sidebar a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.docs-sidebar a.active {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.docs-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-6) var(--sp-7);
+  box-shadow: var(--sh-sm);
+}
+.docs-content h2:first-child { margin-top: 0; }
+.docs-content h2 {
+  font-size: 28px;
+  margin: var(--sp-6) 0 var(--sp-3);
+  padding-top: var(--sp-3);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  scroll-margin-top: 80px;
+}
+.docs-content h3 {
+  font-size: 18px;
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+  scroll-margin-top: 80px;
+}
+.docs-content > p:first-of-type { margin-top: 0; }
+.docs-content section { padding-top: var(--sp-2); }
+.docs-content section + section { margin-top: var(--sp-5); border-top: 1px dashed var(--border); padding-top: var(--sp-5); }
+
+/* ---- Tutorial step card ---- */
+.step-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  margin: var(--sp-4) 0;
+  box-shadow: var(--sh-sm);
+  position: relative;
+}
+.step-card .step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.step-card h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 720px) {
+  .site-nav-inner { padding: var(--sp-3); gap: var(--sp-3); }
+  .site-nav-links { gap: 0; font-size: 13px; }
+  .site-hero { padding: var(--sp-6) 0 var(--sp-5); }
+  .site-section { margin: var(--sp-6) 0; }
+  .band { padding: var(--sp-6) 0; }
+}
+
+</style>
+</head>
+<body class="page-marketing">
+
+<nav class="site-nav">
+  <div class="site-nav-inner">
+    <a class="site-logo" href="./index.html">Markdown<span>+</span></a>
+    <div class="site-nav-links">
+      <a href="./index.html" class="active">為何需要</a>
+      <a href="./syntax.html">語法</a>
+      <a href="./tutorial.html">教學</a>
+      <a href="./playground.html">Playground</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== HERO: 2-col, dotted bg ===== -->
+<section class="band band-dotted">
+  <div class="hero-grid">
+    <div class="hero-text">
+      <div class="hero-tag"><span class="dot"></span>純 Markdown · 無新 dialect</div>
+      <h1>把 Markdown 變成<br><span class="accent">AI 工作本體 + 人類閱讀投影</span></h1>
+      <p class="lead">
+        Markdown+ 不是新格式。它是純 Markdown 加上三個習慣與一份受控 metadata 字彙表,
+        讓同一份文件既能被 AI 穩定查詢與修改,又能被 viewer 渲染成有導覽、卡片、儀表板的人類閱讀介面。
+      </p>
+      <div class="site-cta">
+        <a class="site-btn" href="./playground.html">開啟 Playground →</a>
+        <a class="site-btn secondary" href="./syntax.html">看語法</a>
+      </div>
+    </div>
+
+    <!-- Mock window: source vs preview -->
+    <div class="mock-window">
+      <div class="mock-chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="url">localhost:8000/playground</span>
+      </div>
+      <div class="mock-split">
+        <div class="mock-source"><pre style="margin:0;font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;background:transparent;border:none;padding:0;">- <span class="kw">**#current-state**</span>
+  <span class="meta">`type:state`</span>
+  <span class="meta">`status:active`</span>
+  目前 Auth v2 在
+  production 運作。
+
+- <span class="kw">**#sla-kpi**</span>
+  <span class="meta">`type:kpi`</span>
+  <span class="meta">`value:99.92`</span>
+  <span class="meta">`target:99.95`</span>
+  SLA 99.92%,
+  距目標 0.03%。
+
+- <span class="kw">**#auth-v1**</span>
+  <span class="meta">`type:history`</span>
+  <span class="meta">`status:</span>
+  <span class="str">deprecated</span><span class="meta">`</span>
+  <span class="com"># 預設摺疊</span></pre></div>
+        <div class="mock-preview">
+          <div class="mock-block">
+            <div class="mock-block-title">Current State <span class="mock-pill ok">Active</span></div>
+            <div class="mock-text">目前 Auth v2 在 production 運作。</div>
+          </div>
+          <div class="mock-block" style="border-color: var(--accent); background: var(--accent-soft);">
+            <div class="mock-kpi-label">API SLA</div>
+            <div class="mock-kpi">99.92<span style="font-size:14px;color:var(--text-muted);">%</span></div>
+            <div class="mock-text" style="margin-top:4px;">Target 99.95% · <span style="color:var(--warn);font-weight:600;">−0.03</span></div>
+          </div>
+          <div class="mock-block" style="opacity:0.6;font-style:italic;">
+            <span style="color:var(--text-muted);">▸ Auth v1 (deprecated)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Why band: tinted, compare 2-col ===== -->
+<section class="band band-tinted">
+  <div class="band-inner">
+    <h2 style="text-align:center; margin: 0 0 var(--sp-3);">為什麼需要 Markdown+</h2>
+    <p style="text-align:center; max-width:680px; margin:0 auto var(--sp-5); color:var(--text-muted); font-size:17px;">
+      AI 與人類對「好文件」期待相反。傳統做法走極端,兩邊都做不好。
+    </p>
+    <div class="compare-grid">
+      <div class="compare-card bad-card">
+        <h3><span class="label bad">舊路線</span> 純 Markdown</h3>
+        <ul style="margin:0;padding-left:18px;color:var(--text-muted);">
+          <li>對 AI 友善但難結構化</li>
+          <li>對人類陽春無 UI</li>
+          <li>無 metadata、無受控字彙</li>
+        </ul>
+      </div>
+      <div class="compare-card bad-card">
+        <h3><span class="label bad">舊路線</span> HTML</h3>
+        <ul style="margin:0;padding-left:18px;color:var(--text-muted);">
+          <li>tag 噪音、token 暴漲</li>
+          <li>難局部修改</li>
+          <li>常用 base64 inline 把 context 撐爆</li>
+        </ul>
+      </div>
+      <div class="compare-card good-card" style="grid-column: 1 / -1;">
+        <h3><span class="label good">Markdown+</span> 本體與投影分工</h3>
+        <p style="margin:0 0 var(--sp-2); color:var(--text-muted);">
+          <strong>Source</strong> 是給 AI 的純 Markdown + 受控 metadata。
+          <strong>View</strong> 由 viewer 把 source 渲染成漂亮 HTML。
+        </p>
+        <p style="margin:0; color:var(--text-muted);">
+          Source 不負責長得漂亮,Viewer 不負責保存語義。<strong>兩邊各做自己擅長的事</strong>。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Three principles: grid 3-up ===== -->
+<section class="band">
+  <div class="band-inner">
+    <h2 style="text-align:center;">三個核心原則</h2>
+    <p style="text-align:center;color:var(--text-muted);margin-top:0;">把這三件事做到位,AI 與人類同時受惠。</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </div>
+        <h3>Graceful Degradation</h3>
+        <p>Source 必須是合法 CommonMark。GitHub、Obsidian、VS Code 看仍是清楚的 bullet list,絕無亂碼。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
+          </svg>
+        </div>
+        <h3>Source vs Projection</h3>
+        <p>Source 承載語義 (metadata + prose);viewer 加上 nav、status pill、card、gauge、callout。視覺不寫進 source。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+          </svg>
+        </div>
+        <h3>No Inline Binary</h3>
+        <p>image / video / svg 一律外部相對路徑。base64 是 LLM context 殺手,一張圖可吃幾萬 tokens 還毫無語義。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Mermaid analogy: dark band ===== -->
+<section class="band band-dark">
+  <div class="band-inner band-tight" style="text-align:center;">
+    <p style="text-transform:uppercase; letter-spacing:0.12em; font-size:12px; color:#c4b5fd; margin:0 0 var(--sp-3); font-weight:600;">設計哲學</p>
+    <h2 style="font-size:32px; margin:0 0 var(--sp-3);">跟 Mermaid 同一條路</h2>
+    <p style="font-size:18px; line-height:1.7; max-width:680px; margin:0 auto;">
+      Mermaid 在 GitHub render 成圖,在純文字 editor 看是合法 code fence。
+      Markdown+ 在 GitHub 看是有結構的 bullet list,在 viewer 看是有互動的文件。
+      <strong style="color:#fff;">Source 從頭到尾是合法 CommonMark,不需要任何 dialect 支援</strong>。
+    </p>
+  </div>
+</section>
+
+<!-- ===== 30 sec example: side-by-side ===== -->
+<section class="band">
+  <div class="band-inner">
+    <h2 style="text-align:center;">長什麼樣 — 30 秒範例</h2>
+    <p style="text-align:center;color:var(--text-muted);margin-top:0;">同一份 source,左邊是純 markdown viewer 看到的,右邊是 Markdown+ viewer 渲染。</p>
+    <div class="example-split">
+      <div>
+        <div class="example-label">Source (純 markdown viewer)</div>
+        <pre class="site-code" style="margin-top:0;"><code>- **#current-state** `type:state` `status:active`
+  目前 Auth v2 在 production 運作。
+
+- **#sla-kpi** `type:kpi` `metric:API_SLA`
+   `value:99.92` `target:99.95`
+  API SLA 99.92%,目標 99.95%。
+
+- **#auth-v1** `type:history`
+   `status:deprecated`
+   `visibility:collapsed`
+  Auth v1 把 token 直接放 cookie。</code></pre>
+      </div>
+      <div>
+        <div class="example-label">Rendered (Markdown+ viewer)</div>
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-4); margin-top:0;">
+          <div style="margin-bottom:var(--sp-3); padding:var(--sp-3); border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg-subtle);">
+            <div style="font-weight:600; margin-bottom:4px;">Current State <span class="mock-pill ok" style="display:inline-block;padding:1px 8px;font-size:10px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-weight:600;text-transform:uppercase;">Active</span></div>
+            <div style="font-size:13px;color:var(--text-muted);">目前 Auth v2 在 production 運作。</div>
+          </div>
+          <div style="margin-bottom:var(--sp-3); padding:var(--sp-3); border:1px solid var(--accent); border-radius:var(--r-sm); background:var(--accent-soft);">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">API SLA</div>
+            <div style="font-size:28px;font-weight:700;color:var(--accent-deep);line-height:1.1;">99.92<span style="font-size:14px;color:var(--text-muted);"> %</span></div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Target 99.95% · <span style="color:var(--warn);font-weight:600;">−0.03</span></div>
+          </div>
+          <div style="padding:var(--sp-2) var(--sp-3); border:1px solid var(--border); border-radius:var(--r-sm); opacity:0.6; font-size:13px;">
+            <span style="color:var(--text-muted);">▸ Auth v1 (deprecated)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Solves what: tinted with feature grid ===== -->
+<section class="band band-tinted">
+  <div class="band-inner">
+    <h2 style="text-align:center;">它解決了什麼</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>精準讀取</h3>
+        <p>AI 不再要按行掃整檔。可以 <code class="site-code-inline">list_blocks()</code> → <code class="site-code-inline">read_block(id)</code> 精準讀取。</p>
+      </div>
+      <div class="feature-card">
+        <h3>歷史不污染現況</h3>
+        <p>歷史內容預設摺疊,AI 不會誤把已棄用內容當現況,人類也看得清楚。</p>
+      </div>
+      <div class="feature-card">
+        <h3>Token 友善</h3>
+        <p>metadata 約 10 tokens vs HTML card 200+ tokens。差距在大文件上會放大幾個數量級。</p>
+      </div>
+      <div class="feature-card">
+        <h3>工具鏈相容</h3>
+        <p>GitHub diff、grep、IDE preview 都正常 — 因為 source 仍是合法 CommonMark。</p>
+      </div>
+      <div class="feature-card">
+        <h3>視覺由 viewer 推導</h3>
+        <p>nav、卡片、gauge、callout 全由 metadata 自動推導,作者不寫 CSS 與 HTML。</p>
+      </div>
+      <div class="feature-card">
+        <h3>受控字彙</h3>
+        <p><code class="site-code-inline">type:</code> / <code class="site-code-inline">status:</code> 為 closed list,viewer 才能穩定渲染、AI 才好 routing。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Final CTA: accent band ===== -->
+<section class="band band-accent">
+  <div class="band-inner band-tight">
+    <h2 style="font-size:32px; margin:0 0 var(--sp-3);">準備好試試了嗎?</h2>
+    <p style="font-size:17px; margin:0 0 var(--sp-5); opacity:0.92;">
+      Playground 預設載入一份涵蓋所有元素的 33-block 範例。改一改、看一看。
+    </p>
+    <a class="site-btn" href="./playground.html">立即開啟 Playground →</a>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <span class="footer-mark">Markdown+</span> — graceful Markdown for both AI and humans.
+</footer>
+
+</body>
+</html>

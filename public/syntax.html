@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown+ — 語法結構與設計概念</title>
+<style>
+/* ============================================================
+   Markdown+ Site — Light theme, saturated indigo nav.
+   Stage 0 baseline: design tokens, base styles, marketing components.
+   ============================================================ */
+
+/* ---- Design tokens ---- */
+:root {
+  /* Neutrals */
+  --bg:            #ffffff;
+  --bg-subtle:     #fafafa;
+  --surface:       #ffffff;
+  --surface-2:     #f1f5f9;
+  --surface-3:     #e2e8f0;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Text */
+  --text:          #0f172a;
+  --text-muted:    #475569;
+  --text-faint:    #94a3b8;
+
+  /* Accent — saturated indigo */
+  --accent:        #4f46e5;        /* indigo-600,  body / button bg */
+  --accent-deep:   #4338ca;        /* indigo-700,  nav bg */
+  --accent-hover:  #3730a3;        /* indigo-800 */
+  --accent-soft:   #eef2ff;        /* indigo-50,  tint surface */
+  --accent-on:     #ffffff;        /* text on accent */
+
+  /* Secondary accent — cyan for "+" and code highlights */
+  --accent-2:      #0891b2;        /* cyan-600 */
+  --accent-2-soft: #ecfeff;        /* cyan-50 */
+
+  /* Semantic */
+  --ok:            #16a34a;
+  --ok-soft:       #dcfce7;
+  --warn:          #d97706;
+  --warn-soft:     #fef3c7;
+  --err:           #dc2626;
+  --err-soft:      #fee2e2;
+
+  /* Code surface (always dark for legibility) */
+  --code-bg:       #0f172a;
+  --code-text:     #e2e8f0;
+  --code-muted:    #94a3b8;
+  --code-keyword:  #c4b5fd;
+  --code-string:   #86efac;
+  --code-comment:  #64748b;
+
+  /* Typography */
+  --font-sans: "Inter", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", "SF Mono", ui-monospace, Menlo,
+               Consolas, monospace;
+
+  /* Spacing scale (4-base) */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --sp-8:  64px;
+
+  /* Radius */
+  --r-sm:  4px;
+  --r-md:  8px;
+  --r-lg:  12px;
+  --r-xl:  16px;
+  --r-full: 999px;
+
+  /* Shadow */
+  --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --sh-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --sh-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --sh-accent: 0 4px 12px rgba(79, 70, 229, 0.25);
+
+  /* Motion */
+  --t-fast: 120ms ease-out;
+  --t-slow: 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---- Reset & Base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration: none; transition: color var(--t-fast); }
+a:hover { color: var(--accent-hover); }
+img { max-width: 100%; height: auto; }
+::selection { background: var(--accent-soft); color: var(--accent-deep); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ---- Nav (the signature element) ---- */
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--accent-deep);
+  color: var(--accent-on);
+  box-shadow: var(--sh-md);
+}
+.site-nav-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-5);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+.site-logo {
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--accent-on);
+  text-decoration: none;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.site-logo span {
+  color: #fbbf24;       /* amber-400, contrasts beautifully with indigo */
+  font-size: 24px;
+  line-height: 1;
+}
+.site-nav-links {
+  display: flex;
+  gap: var(--sp-2);
+  margin-left: auto;
+  font-size: 14px;
+}
+.site-nav-links a {
+  color: rgba(255, 255, 255, 0.78);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.site-nav-links a:hover {
+  color: var(--accent-on);
+  background: rgba(255, 255, 255, 0.1);
+}
+.site-nav-links a.active {
+  color: var(--accent-on);
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+}
+
+/* ---- Main containers ---- */
+main.site-main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5) var(--sp-8);
+}
+main.site-main.wide { max-width: 1320px; }
+main.site-main.bleed { max-width: none; padding: var(--sp-5); }
+
+/* ---- Hero ---- */
+.site-hero {
+  padding: var(--sp-8) 0 var(--sp-6);
+  text-align: center;
+}
+.site-hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 1.05;
+  margin: 0 0 var(--sp-4);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.site-hero h1 .accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.site-hero .lead {
+  font-size: 18px;
+  color: var(--text-muted);
+  max-width: 680px;
+  margin: 0 auto var(--sp-6);
+  line-height: 1.65;
+}
+.site-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---- Sections ---- */
+.site-section {
+  margin: var(--sp-7) 0;
+}
+.site-section h2 {
+  font-size: 30px;
+  margin: 0 0 var(--sp-3);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.site-section h3 {
+  font-size: 20px;
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+}
+.site-section p { margin: var(--sp-3) 0; }
+.site-section ul, .site-section ol { margin: var(--sp-3) 0; padding-left: 24px; }
+.site-section li { margin: var(--sp-2) 0; }
+
+/* ---- Buttons ---- */
+.site-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: var(--r-md);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+}
+.site-btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-on);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-accent);
+}
+.site-btn:active { transform: translateY(0); }
+.site-btn.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.site-btn.secondary:hover {
+  background: var(--surface-2);
+  color: var(--accent-deep);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+.site-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-deep);
+}
+.site-btn.ghost:hover { background: var(--accent-soft); box-shadow: none; }
+
+/* ---- Pillars (3-up cards on landing) ---- */
+.site-pillars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+}
+.site-pillar {
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.site-pillar:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+  border-color: var(--accent);
+}
+.site-pillar h3 {
+  font-size: 16px;
+  margin: 0 0 var(--sp-2);
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+.site-pillar p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ---- Code blocks ---- */
+pre.site-code {
+  font-family: var(--font-mono);
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: var(--sp-4) 0;
+  position: relative;
+  border: 1px solid #1e293b;
+}
+pre.site-code code { color: inherit; background: transparent; }
+code.site-code-inline {
+  font-family: var(--font-mono);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  font-size: 0.88em;
+  border: 1px solid transparent;
+}
+
+/* ---- Tables ---- */
+table.site-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: var(--sp-4) 0;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+table.site-table th, table.site-table td {
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+table.site-table thead th {
+  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border-strong);
+}
+table.site-table tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+table.site-table tbody tr:last-child td { border-bottom: none; }
+table.site-table tbody tr:hover td { background: var(--accent-soft); }
+
+/* ---- Footer ---- */
+footer.site-footer {
+  border-top: 1px solid var(--border);
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: var(--bg-subtle);
+}
+footer.site-footer .footer-mark {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+/* ---- Tutorial step badges ---- */
+.tutorial-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: var(--sp-2);
+  vertical-align: middle;
+}
+
+/* ---- Section bands (break up vertical stack) ---- */
+.band {
+  width: 100%;
+  padding: var(--sp-8) 0;
+}
+.band-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--sp-5);
+}
+.band-tight .band-inner { max-width: 880px; }
+.band-tinted {
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg-subtle) 100%);
+}
+.band-dotted {
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(67, 56, 202, 0.10) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.band-dark {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.35) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(8, 145, 178, 0.30) 0%, transparent 50%),
+    linear-gradient(180deg, #1e1b4b 0%, #0f172a 100%);
+  color: #e2e8f0;
+}
+.band-dark h2, .band-dark h3 { color: #ffffff; }
+.band-dark p { color: rgba(226, 232, 240, 0.8); }
+.band-dark a { color: #c4b5fd; }
+.band-dark code.site-code-inline {
+  background: rgba(255, 255, 255, 0.1);
+  color: #c4b5fd;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.band-accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: var(--accent-on);
+  text-align: center;
+  padding: var(--sp-7) 0;
+}
+.band-accent h2 { color: var(--accent-on); }
+.band-accent p { color: rgba(255, 255, 255, 0.85); }
+.band-accent .site-btn {
+  background: var(--accent-on);
+  color: var(--accent-deep);
+  border-color: var(--accent-on);
+}
+.band-accent .site-btn:hover {
+  background: #f5f3ff;
+  color: var(--accent-deep);
+  border-color: #f5f3ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* ---- Hero 2-col ---- */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: var(--sp-7);
+  align-items: center;
+  padding: var(--sp-7) 0 var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 960px) {
+  .hero-grid { grid-template-columns: 1fr; gap: var(--sp-5); padding: var(--sp-6) var(--sp-4); }
+}
+.hero-grid .hero-text { padding: 0 var(--sp-5); }
+.hero-grid h1 {
+  font-size: clamp(34px, 4.5vw, 52px);
+  line-height: 1.05;
+  margin: 0 0 var(--sp-4);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.hero-grid h1 .accent {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-grid .lead {
+  font-size: 17px;
+  color: var(--text-muted);
+  margin: 0 0 var(--sp-5);
+  line-height: 1.7;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--sp-3);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+.hero-tag .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+}
+
+/* ---- Mock browser window (hero visual) ---- */
+.mock-window {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+  font-size: 12px;
+  transform: rotate(-1deg);
+  transition: transform var(--t-slow);
+  position: relative;
+}
+.mock-window:hover { transform: rotate(0) translateY(-2px); }
+.mock-window::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.25), transparent 70%);
+  pointer-events: none;
+}
+.mock-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.mock-chrome .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+}
+.mock-chrome .dot:nth-child(1) { background: #f87171; }
+.mock-chrome .dot:nth-child(2) { background: #fbbf24; }
+.mock-chrome .dot:nth-child(3) { background: #4ade80; }
+.mock-chrome .url {
+  margin-left: var(--sp-3);
+  padding: 3px 10px;
+  background: var(--surface);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  flex: 1;
+  max-width: 240px;
+}
+.mock-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 280px;
+}
+.mock-source {
+  padding: var(--sp-3);
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.75;
+  overflow: hidden;
+}
+.mock-source .kw { color: #c4b5fd; }
+.mock-source .meta { color: #67e8f9; }
+.mock-source .com { color: #94a3b8; }
+.mock-source .str { color: #86efac; }
+.mock-preview {
+  padding: var(--sp-3);
+  background: var(--surface);
+  font-size: 11px;
+  line-height: 1.6;
+  border-left: 1px solid var(--border);
+}
+.mock-preview .mock-block {
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--sp-2);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+.mock-preview .mock-block-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mock-preview .mock-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 9px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mock-preview .mock-pill.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.mock-preview .mock-pill.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.mock-preview .mock-kpi {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.mock-preview .mock-kpi-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mock-preview .mock-text {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---- 2-col compare ---- */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+}
+@media (max-width: 720px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
+.compare-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  box-shadow: var(--sh-sm);
+}
+.compare-card h3 {
+  margin: 0 0 var(--sp-3);
+  font-size: 18px;
+  color: var(--accent-deep);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.compare-card .label {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.compare-card .label.bad {
+  background: var(--err-soft);
+  color: var(--err);
+}
+.compare-card .label.good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.compare-card.bad-card { border-left: 4px solid var(--err); }
+.compare-card.good-card { border-left: 4px solid var(--ok); }
+
+/* ---- Feature grid (2x3) ---- */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 720px) {
+  .feature-grid { grid-template-columns: 1fr; }
+}
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.feature-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-md);
+  border-color: var(--accent);
+}
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  margin-bottom: var(--sp-3);
+}
+.feature-card h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+.feature-card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ---- Side-by-side example block ---- */
+.example-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 720px) {
+  .example-split { grid-template-columns: 1fr; }
+}
+.example-split > * { min-width: 0; }
+.example-split .example-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-2);
+}
+
+/* ---- Docs layout (sidebar + content) ---- */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--sp-6);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-8);
+}
+@media (max-width: 960px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+    padding: var(--sp-4);
+  }
+  .docs-sidebar { position: static !important; }
+}
+.docs-sidebar {
+  position: sticky;
+  top: calc(56px + var(--sp-4));
+  align-self: start;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.docs-sidebar h4 {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--sp-2);
+  font-weight: 700;
+}
+.docs-sidebar ol {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--sp-4);
+}
+.docs-sidebar li { margin: 2px 0; }
+.docs-sidebar a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.docs-sidebar a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.docs-sidebar a.active {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.docs-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-6) var(--sp-7);
+  box-shadow: var(--sh-sm);
+}
+.docs-content h2:first-child { margin-top: 0; }
+.docs-content h2 {
+  font-size: 28px;
+  margin: var(--sp-6) 0 var(--sp-3);
+  padding-top: var(--sp-3);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  scroll-margin-top: 80px;
+}
+.docs-content h3 {
+  font-size: 18px;
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+  scroll-margin-top: 80px;
+}
+.docs-content > p:first-of-type { margin-top: 0; }
+.docs-content section { padding-top: var(--sp-2); }
+.docs-content section + section { margin-top: var(--sp-5); border-top: 1px dashed var(--border); padding-top: var(--sp-5); }
+
+/* ---- Tutorial step card ---- */
+.step-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  margin: var(--sp-4) 0;
+  box-shadow: var(--sh-sm);
+  position: relative;
+}
+.step-card .step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.step-card h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 720px) {
+  .site-nav-inner { padding: var(--sp-3); gap: var(--sp-3); }
+  .site-nav-links { gap: 0; font-size: 13px; }
+  .site-hero { padding: var(--sp-6) 0 var(--sp-5); }
+  .site-section { margin: var(--sp-6) 0; }
+  .band { padding: var(--sp-6) 0; }
+}
+
+</style>
+</head>
+<body class="page-marketing" style="background: var(--bg-subtle);">
+
+<nav class="site-nav">
+  <div class="site-nav-inner">
+    <a class="site-logo" href="./index.html">Markdown<span>+</span></a>
+    <div class="site-nav-links">
+      <a href="./index.html">為何需要</a>
+      <a href="./syntax.html" class="active">語法</a>
+      <a href="./tutorial.html">教學</a>
+      <a href="./playground.html">Playground</a>
+    </div>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <!-- ===== Sidebar TOC ===== -->
+  <aside class="docs-sidebar">
+    <h4>本頁目錄</h4>
+    <ol>
+      <li><a href="#structure" class="docs-link">語法結構</a></li>
+      <li><a href="#vocab">受控字彙表</a></li>
+      <li><a href="#constraints">約束關係</a></li>
+      <li><a href="#forbidden">禁止清單</a></li>
+      <li><a href="#philosophy">設計理念對照</a></li>
+    </ol>
+    <h4>跳到別頁</h4>
+    <ol>
+      <li><a href="./index.html">← 為何需要</a></li>
+      <li><a href="./tutorial.html">教學 →</a></li>
+      <li><a href="./playground.html">Playground →</a></li>
+    </ol>
+  </aside>
+
+  <!-- ===== Content card ===== -->
+  <article class="docs-content">
+
+    <section id="structure">
+      <h2>語法結構</h2>
+      <p>
+        Markdown+ 文件由
+        <strong>一份 H1 標題 + 一段引言 + 多個 bullet-list block</strong>
+        組成。每個 block 的開頭固定格式:
+      </p>
+      <pre class="site-code"><code>- **#&lt;kebab-case-id&gt;** `type:&lt;value&gt;` `&lt;key&gt;:&lt;value&gt;` ...
+  &lt;block body, 縮排 2 spaces, 任意合法 Markdown&gt;
+
+  - **#&lt;child-id&gt;** `type:&lt;value&gt;` ...
+    &lt;子 block, 縮排 4 spaces&gt;</code></pre>
+
+      <h3>組成元素</h3>
+      <table class="site-table">
+        <thead><tr><th>元件</th><th>規則</th><th>純 Markdown 渲染</th><th>Markdown+ viewer 渲染</th></tr></thead>
+        <tbody>
+          <tr><td>Bullet</td><td><code class="site-code-inline">- </code></td><td>圓點</td><td>section 邊界</td></tr>
+          <tr><td>Block ID</td><td><code class="site-code-inline">**#kebab-id**</code></td><td>粗體 hashtag</td><td>anchor + <code class="site-code-inline">id=""</code></td></tr>
+          <tr><td>Metadata</td><td>inline code <code class="site-code-inline">`key:value`</code></td><td>monospace badge</td><td>解析為 attribute</td></tr>
+          <tr><td>父子</td><td>nested bullet list 縮排</td><td>自然縮排</td><td><code class="site-code-inline">&lt;section&gt;</code> 巢狀</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="vocab">
+      <h2>受控 metadata 字彙表</h2>
+
+      <h3><code class="site-code-inline">type:</code> (block 主類型,closed list)</h3>
+      <p>需要擴充必須用 <code class="site-code-inline">x-</code> 前綴。</p>
+      <table class="site-table">
+        <thead><tr><th>type</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code class="site-code-inline">state</code></td><td>描述當前事實 / 現況</td></tr>
+          <tr><td><code class="site-code-inline">history</code></td><td>已不適用的歷史(預設摺疊)</td></tr>
+          <tr><td><code class="site-code-inline">decision</code></td><td>決策紀錄</td></tr>
+          <tr><td><code class="site-code-inline">record</code></td><td>事件紀錄 (會議、incident)</td></tr>
+          <tr><td><code class="site-code-inline">issue</code></td><td>待解問題 / blocker</td></tr>
+          <tr><td><code class="site-code-inline">note</code></td><td>補充說明</td></tr>
+          <tr><td><code class="site-code-inline">spec</code></td><td>規格 / 技術說明</td></tr>
+          <tr><td><code class="site-code-inline">task</code></td><td>待辦 / action item</td></tr>
+          <tr><td><code class="site-code-inline">reference</code></td><td>外部連結彙整</td></tr>
+          <tr><td><code class="site-code-inline">figure / table / chart / diagram</code></td><td>視覺資料</td></tr>
+          <tr><td><code class="site-code-inline">kpi / gauge / targets / dashboard / card</code></td><td>儀表板元件</td></tr>
+          <tr><td><code class="site-code-inline">dialogue / turn</code></td><td>對話容器與輪次</td></tr>
+          <tr><td><code class="site-code-inline">step</code></td><td>教學 / runbook 步驟</td></tr>
+        </tbody>
+      </table>
+
+      <h3><code class="site-code-inline">status:</code> (closed list)</h3>
+      <p style="line-height: 2;">
+        <code class="site-code-inline">draft</code>
+        <code class="site-code-inline">active</code>
+        <code class="site-code-inline">proposed</code>
+        <code class="site-code-inline">accepted</code>
+        <code class="site-code-inline">rejected</code>
+        <code class="site-code-inline">superseded</code>
+        <code class="site-code-inline">deprecated</code>
+        <code class="site-code-inline">archive</code>
+        <code class="site-code-inline">healthy</code>
+        <code class="site-code-inline">degraded</code>
+        <code class="site-code-inline">down</code>
+        <code class="site-code-inline">on-track</code>
+        <code class="site-code-inline">behind</code>
+        <code class="site-code-inline">exceeded</code>
+        <code class="site-code-inline">done</code>
+        <code class="site-code-inline">blocked</code>
+        <code class="site-code-inline">open</code>
+        <code class="site-code-inline">closed</code>
+      </p>
+
+      <h3>其他常用 metadata</h3>
+      <ul>
+        <li><code class="site-code-inline">updated:YYYY-MM-DD</code> — ISO 日期</li>
+        <li><code class="site-code-inline">visibility:collapsed</code> — viewer 預設摺疊</li>
+        <li><code class="site-code-inline">priority:high|normal|low|critical</code></li>
+        <li><code class="site-code-inline">tags:[domain:auth,team:platform]</code> — 用 namespace</li>
+        <li><code class="site-code-inline">superseded-by:&lt;id&gt;</code> — 指向替代者</li>
+        <li><code class="site-code-inline">related:[id1,id2]</code></li>
+        <li><code class="site-code-inline">variant-group:install</code> + <code class="site-code-inline">variant:mac</code> — 同 group 的 sibling 會被 viewer 聚合成 tab</li>
+        <li>KPI: <code class="site-code-inline">value: target: delta: unit:</code></li>
+        <li>Gauge: <code class="site-code-inline">value: min: max: target: zones:[99:red,99.9:amber,99.95:green]</code></li>
+      </ul>
+    </section>
+
+    <section id="constraints">
+      <h2>必須遵守的約束關係</h2>
+      <ul>
+        <li><code class="site-code-inline">status:deprecated</code> ⇒ 必有 <code class="site-code-inline">superseded-by:&lt;id&gt;</code></li>
+        <li><code class="site-code-inline">type:history</code> ⇒ <code class="site-code-inline">visibility:collapsed</code></li>
+        <li><code class="site-code-inline">type:kpi</code> ⇒ <code class="site-code-inline">value:</code>,且與 prose 段數字一致</li>
+        <li><code class="site-code-inline">type:gauge</code> ⇒ <code class="site-code-inline">value: min: max: target: zones:</code> 全要</li>
+        <li>同層共用 <code class="site-code-inline">variant-group:</code> 的 sibling 必須各有不同 <code class="site-code-inline">variant:</code></li>
+        <li>每個 <code class="site-code-inline">figure / chart / table / kpi / gauge / video / audio</code> 必須有 prose companion 段</li>
+        <li>表格 > 30 列必須用 <code class="site-code-inline">data-source:./data/&lt;name&gt;.csv</code></li>
+      </ul>
+    </section>
+
+    <section id="forbidden">
+      <h2>禁止清單 (lint error)</h2>
+      <table class="site-table">
+        <thead><tr><th>禁止項</th><th>替代</th></tr></thead>
+        <tbody>
+          <tr><td><code class="site-code-inline">:::block</code> fenced div</td><td>bullet list block</td></tr>
+          <tr><td>Raw HTML 容器 (<code class="site-code-inline">div / span / section</code> ...)</td><td>由 viewer 從 metadata 生成</td></tr>
+          <tr><td><code class="site-code-inline">&lt;script&gt; / &lt;style&gt;</code></td><td>留給 viewer</td></tr>
+          <tr><td><code class="site-code-inline">class="" / style=""</code></td><td>留給 viewer</td></tr>
+          <tr><td>Inline <code class="site-code-inline">data:image/...;base64,...</code></td><td>外部相對路徑</td></tr>
+          <tr><td>Inline <code class="site-code-inline">&lt;svg&gt;</code></td><td><code class="site-code-inline">![alt](./path.svg)</code></td></tr>
+          <tr><td>巨型 inline chart spec (>80 行)</td><td>拆到 <code class="site-code-inline">./charts/*.json</code></td></tr>
+          <tr><td>巨型 inline 表格 (>30 列)</td><td>拆到 <code class="site-code-inline">./data/*.csv</code></td></tr>
+          <tr><td>寫死 caption 編號 (<code class="site-code-inline">Figure 1:</code>)</td><td><code class="site-code-inline">*Figure: ...*</code>,viewer 自動編號</td></tr>
+          <tr><td>自由 <code class="site-code-inline">type:</code> 值</td><td>受控字彙表或 <code class="site-code-inline">x-</code> 前綴</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="philosophy">
+      <h2>設計理念對照</h2>
+      <table class="site-table">
+        <thead><tr><th>面向</th><th>傳統 Markdown</th><th>HTML</th><th>Markdown+</th></tr></thead>
+        <tbody>
+          <tr><td>對 AI</td><td>友善但難結構化</td><td>tag 噪音、token 暴漲</td><td>block-addressable + 受控 metadata</td></tr>
+          <tr><td>對人類</td><td>陽春</td><td>漂亮但 source 不可讀</td><td>viewer 渲染漂亮 + source 仍可讀</td></tr>
+          <tr><td>新 dialect</td><td>無</td><td>(N/A)</td><td>無 — 仍是合法 CommonMark</td></tr>
+          <tr><td>圖片</td><td>路徑或 base64</td><td>常用 base64 inline</td><td>強制路徑,禁 base64</td></tr>
+          <tr><td>互動 UI</td><td>無</td><td>需手寫 JS + CSS</td><td>由 viewer 從 metadata 自動推導</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </article>
+</div>
+
+<footer class="site-footer">
+  <span class="footer-mark">Markdown+</span> — graceful Markdown for both AI and humans.
+</footer>
+
+<script>
+  // Sidebar scroll-spy
+  (function () {
+    const links = document.querySelectorAll(".docs-sidebar a[href^='#']");
+    const targets = Array.from(links).map(a => ({
+      link: a,
+      el: document.querySelector(a.getAttribute("href"))
+    })).filter(t => t.el);
+    function update() {
+      const y = window.scrollY + 90;
+      let active = null;
+      for (const t of targets) {
+        if (t.el.offsetTop <= y) active = t;
+      }
+      for (const t of targets) t.link.classList.toggle("active", t === active);
+    }
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  })();
+</script>
+</body>
+</html>

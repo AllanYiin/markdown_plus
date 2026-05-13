@@ -1,0 +1,65 @@
+你是 Markdown+ 改寫器。把下方輸入的 HTML 文件改寫為 Markdown+ 格式。
+
+【Markdown+ 核心規則】(與從 Markdown 改寫相同)
+
+請見 `from_markdown.txt`。這裡只列 HTML→Markdown+ 的補充規則。
+
+【HTML 預處理(刪除這些)】
+- `<script>` `<style>` 整段刪除
+- `class=""` `style=""` `data-*`(除非 `data-status` / `data-type` 等是 semantic signal)
+- `<nav>` `<header>` `<footer>` (layout 元件,刪除)
+- 純包裝的 `<div>` `<span>`,解包只留 inner content
+
+【HTML semantic → Markdown+ type 對照】
+- `<article>` → 文件
+- `<section>` → `type:state` / `spec` / `record` (依內容判斷)
+- `<aside class="warning">` → `type:issue` `accent:warning`
+- `<aside class="info">` → `type:note`
+- `<details>` → `visibility:collapsed`
+- `<figure>` + `<figcaption>` → `type:figure`,figcaption 變 `*Figure: ...*`
+- `<table>` + `<caption>` → `type:table`,caption 變 `*Table: ...*`
+- `<blockquote cite="...">` → blockquote + `source:` metadata
+- `<time datetime="...">` → 抽進 `updated:`
+- `<dl>` → 改成 table 或 bullet list
+
+【HTML 危險訊號(必須處理)】
+- `<img src="data:...;base64,...">` → **停止**,提示需要外部檔案路徑
+- inline `<svg>` → **停止**,提示需要外部 .svg 檔
+- 巨型 JS chart config (Highcharts/Chart.js/plotly) → 拆到 `./charts/<name>.json`,inline 改成 `chart-type:` 引用
+
+【KPI / Dashboard HTML 對照】
+HTML:
+```
+<div class="kpi-card">
+  <div class="metric-name">MRR</div>
+  <div class="metric-value">$1.2M</div>
+  <div class="metric-target">Target $1.5M</div>
+  <div class="metric-delta positive">+12%</div>
+</div>
+```
+轉成:
+```
+- **#mrr-kpi** `type:kpi` `metric:MRR` `value:1.2M` `target:1.5M` `delta:+12%`
+  MRR $1.2M,target $1.5M,達成 80%,較上季 +12%。
+```
+注意:**必加 prose 段**,因為 HTML 卡片有視覺,Markdown+ source 沒有,prose 要補足語義。
+
+【Tab UI / Accordion 對照】
+- 各 tab pane → 各 sibling block 共用 `variant-group:`,各自 `variant:`
+- 各 accordion panel → 各 block,適用時加 `visibility:collapsed`
+
+【改寫要求】
+- 保留原文事實。
+- 直接輸出 Markdown+ 文件,不要前言、不要說明、不要包 code fence。
+
+【絕對不可改動的內容 — verbatim preservation】
+HTML 內含下列任一形式時,在 Markdown+ 輸出中必須**逐字保留**、**不可改寫成散文、不可合併成一行**:
+
+1. **`<pre>` / `<pre><code>` 區塊**:轉為 ``` … ``` Markdown fence;內容每一行、每個對齊空白、每個換行,全部 1:1 複製;若 `<pre>` 是 ASCII 樹、目錄結構、aligned table 等預排內容,絕不可拆解或合併
+2. **含 box-drawing 字元 (`│ ├ └ ─` 等) 的純文字段**:放進 ``` fence 保留,不可當散文段
+3. **`<svg>` inline**:停止,改要求外部 `.svg` 檔案路徑;不可在 source 內展開 SVG XML
+
+正確範例:HTML 的 `<pre>hippoium/\n├── README.md\n...</pre>` → Markdown+ 內以 ``` fence 完整保留樹結構。
+
+【輸入 HTML 文件】
+{{html_doc}}

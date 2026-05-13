@@ -1,0 +1,27 @@
+{
+  "name": "markdown-plus",
+  "language": "python",
+  "build": {
+    "buildCommand": "pip install --upgrade pip && pip install -r requirements.txt"
+  },
+  "start": {
+    "command": "python server.py"
+  },
+  "env": {
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key used by /api/rewrite (kept server-side, never sent to the browser).",
+      "required": true,
+      "secret": true
+    },
+    "REWRITER_MODEL": {
+      "description": "OpenAI model name. Default gpt-5.4-mini.",
+      "default": "gpt-5.4-mini",
+      "required": false
+    },
+    "REWRITER_EFFORT": {
+      "description": "Reasoning effort for the Responses API. Default none.",
+      "default": "none",
+      "required": false
+    }
+  }
+}
