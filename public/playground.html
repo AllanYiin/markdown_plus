@@ -1386,25 +1386,6 @@ body.has-fullscreen-pane { overflow: hidden; }
   font-family: var(--font-mono);
 }
 
-/* ---- Hint footer ---- */
-.pg-hint {
-  padding: var(--sp-3) var(--sp-5);
-  background: var(--accent-soft);
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--accent-deep);
-  line-height: 1.65;
-}
-.pg-hint code {
-  font-family: var(--font-mono);
-  background: var(--surface);
-  padding: 1px 6px;
-  border-radius: var(--r-sm);
-  font-size: 12px;
-  color: var(--accent-deep);
-  border: 1px solid var(--border);
-}
-
 </style>
 <style>
 /* ============================================================
@@ -2169,13 +2150,6 @@ blockquote {
         </header>
         <textarea id="rewriter-output" placeholder="改寫後 Markdown+ 或產生的 prompt..."></textarea>
       </div>
-    </div>
-    <div class="pg-hint" id="rewriter-hint">
-      <strong>由 LLM 改寫:</strong>
-      改寫透過後端 <code>/api/rewrite</code> 呼叫 OpenAI Responses API,API key 從伺服器
-      <code>OPENAI_API_KEY</code> 環境變數讀取,不在瀏覽器暴露。
-      啟動方式:<code>set OPENAI_API_KEY=sk-...</code> 後 <code>python serve.py</code>,
-      然後開啟 <code>http://localhost:8000/website/playground.html</code>。
     </div>
   </div>
 
