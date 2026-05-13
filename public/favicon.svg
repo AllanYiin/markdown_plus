@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Markdown+ icon">
+  <title>Markdown+</title>
+  <!-- indigo-700 background, rounded square (matches site nav color) -->
+  <rect width="64" height="64" rx="12" fill="#4338ca"/>
+  <!-- amber-400 plus sign, thick rounded strokes (matches the '+' in the site logo) -->
+  <g stroke="#fbbf24" stroke-width="10" stroke-linecap="round" fill="none">
+    <line x1="32" y1="14" x2="32" y2="50"/>
+    <line x1="14" y1="32" x2="50" y2="32"/>
+  </g>
+</svg>
