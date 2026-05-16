@@ -25,6 +25,17 @@ Endpoints:
     POST /api/rewrite            → NDJSON stream (text/plain + X-Stream-Format: ndjson)
                                     body: {"from": "markdown"|"html", "content": str}
                                     events: {type:start}, {type:delta,delta}, {type:done,...}, {type:error,...}
+    GET  /api/mdp/list           → JSON block manifest (params: path, depth, type, status, where, fields)
+    GET  /api/mdp/tree           → JSON nested block hierarchy (params: path)
+    GET  /api/mdp/get            → JSON one block's metadata (params: path, id)
+    GET  /api/mdp/children       → JSON direct child ids (params: path, id)
+    GET  /api/mdp/read           → JSON block body markdown (params: path, id, children, max_lines)
+    GET  /api/mdp/search         → JSON keyword search over metadata (params: path, q, limit)
+    GET  /api/mdp/xref           → JSON resolved relationships (params: path, id)
+
+    The /api/mdp/* family is the Layer 2 block-query API: it lets an agent do
+    progressive disclosure over a Markdown+ doc instead of reading the whole
+    file. `path` is resolved relative to public/ and may not escape it.
 """
 from __future__ import annotations
 
@@ -33,7 +44,7 @@ import os
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
@@ -46,6 +57,15 @@ PROMPTS: dict[str, Path] = {
 
 MODEL = os.environ.get("REWRITER_MODEL", "gpt-5.4-mini")
 EFFORT = os.environ.get("REWRITER_EFFORT", "none")
+
+# Block-query API (Layer 2) lives in cli/python/query.py — reuse it here so the
+# HTTP endpoints and the offline CLI share one implementation.
+sys.path.insert(0, str(ROOT / "cli" / "python"))
+try:
+    import query as mdp_query  # type: ignore
+except Exception as _e:  # noqa: BLE001
+    mdp_query = None
+    _MDP_IMPORT_ERROR = str(_e)
 
 
 def build_prompt(kind: str, content: str) -> str:
@@ -68,18 +88,104 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- GET ----
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/api/health":
             return self.json_response(200, {
                 "ok": True,
                 "model": MODEL,
                 "effort": EFFORT,
                 "has_key": bool(os.environ.get("OPENAI_API_KEY")),
+                "mdp_query": mdp_query is not None,
             })
+        if path.startswith("/api/mdp/"):
+            return self.handle_mdp(path, parse_qs(parsed.query))
         # Root → index.html
         if path in ("/", ""):
             self.path = "/index.html"
         return super().do_GET()
+
+    # ---- /api/mdp/* — block-query API (Layer 2) ----
+    def _safe_doc_path(self, raw: str) -> Path:
+        """Resolve `raw` relative to public/ and reject anything that escapes it."""
+        candidate = (PUBLIC_DIR / raw).resolve()
+        if candidate != PUBLIC_DIR and not candidate.is_relative_to(PUBLIC_DIR):
+            raise ValueError("path escapes the public/ directory")
+        return candidate
+
+    def handle_mdp(self, path: str, params: dict[str, list[str]]) -> None:
+        if mdp_query is None:
+            return self.json_response(500, {
+                "error": f"block-query module unavailable: {_MDP_IMPORT_ERROR}"
+            })
+        op = path[len("/api/mdp/"):]
+
+        def p(name: str, default=None):
+            v = params.get(name)
+            return v[0] if v else default
+
+        raw_path = p("path")
+        if not raw_path:
+            return self.json_response(400, {"error": "missing 'path' query param"})
+        try:
+            doc = self._safe_doc_path(raw_path)
+        except ValueError as e:
+            return self.json_response(403, {"error": str(e)})
+        if not doc.is_file():
+            return self.json_response(404, {"error": f"file not found: {raw_path}"})
+
+        def need_id():
+            bid = p("id")
+            if not bid:
+                raise ValueError("missing 'id' query param")
+            return bid
+
+        try:
+            if op == "list":
+                depth = int(p("depth")) if p("depth") else None
+                where: dict[str, str] = {}
+                for key in ("type", "status", "parent"):
+                    if p(key):
+                        where[key] = p(key)
+                for pair in params.get("where", []):
+                    if "=" in pair:
+                        k, v = pair.split("=", 1)
+                        where[k] = v
+                fields = p("fields")
+                result = mdp_query.list_blocks(
+                    doc, depth=depth, where=where or None,
+                    fields=fields.split(",") if fields else None,
+                )
+            elif op == "tree":
+                result = mdp_query.tree(doc)
+            elif op == "get":
+                result = mdp_query.get_block_meta(doc, need_id())
+            elif op == "children":
+                result = mdp_query.list_children(doc, need_id())
+            elif op == "read":
+                max_lines = int(p("max_lines")) if p("max_lines") else None
+                result = mdp_query.read_block(
+                    doc, need_id(),
+                    include_children=p("children", "") in ("1", "true", "yes"),
+                    max_lines=max_lines,
+                )
+            elif op == "search":
+                q = p("q")
+                if not q:
+                    return self.json_response(400, {"error": "missing 'q' query param"})
+                result = mdp_query.search_blocks(
+                    doc, q, limit=int(p("limit")) if p("limit") else 20,
+                )
+            elif op == "xref":
+                result = mdp_query.resolve_xref(doc, need_id())
+            else:
+                return self.json_response(404, {"error": f"unknown mdp op: {op!r}"})
+        except KeyError as e:
+            return self.json_response(404, {"error": str(e).strip('"')})
+        except ValueError as e:
+            return self.json_response(400, {"error": str(e)})
+
+        return self.json_response(200, {"ok": True, "op": op, "result": result})
 
     # ---- /api/rewrite handler — streams NDJSON ----
     def handle_rewrite(self):

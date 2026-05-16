@@ -1,0 +1,126 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_list_blocks",
+      "description": "List blocks in a Markdown+ document. Returns a metadata-only manifest [{id, type, status, title, line}], NOT body content. ALWAYS call this first to discover what is in a file before reading any block — it is the cheap, token-light entry point for progressive disclosure.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the Markdown+ (.mdp.md) document."
+          },
+          "depth": {
+            "type": "integer",
+            "description": "Nesting depth to include. 1 = top-level blocks only, 2 = include direct children, etc. Omit for all levels."
+          },
+          "where": {
+            "type": "object",
+            "description": "Filter by block attributes / metadata, e.g. {\"type\": \"decision\", \"status\": \"open\"}. Use the value \"*\" to match any present value of a key.",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_get_block_meta",
+      "description": "Get one block's full metadata (id, type, line, depth, parent, children, title, summary, all key:value metadata, body line count). Still NO body content. Call after mdp_list_blocks to inspect a specific candidate before deciding to read it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the Markdown+ document." },
+          "id": { "type": "string", "description": "Block id (without the leading '#')." }
+        },
+        "required": ["path", "id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_list_children",
+      "description": "List the direct child block ids of a block. Use to walk a document's hierarchy one level at a time without pulling content.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the Markdown+ document." },
+          "id": { "type": "string", "description": "Parent block id (without the leading '#')." }
+        },
+        "required": ["path", "id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_read_block",
+      "description": "Read a block's body markdown. This is the ONLY call that returns real content and spends tokens — call it last, only on the specific block(s) you actually need. The returned body includes the block's own header line, so it is a valid standalone Markdown+ snippet.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the Markdown+ document." },
+          "id": { "type": "string", "description": "Block id (without the leading '#')." },
+          "include_children": {
+            "type": "boolean",
+            "description": "If true, return the whole subtree (child headers + bodies). Default false (own body only)."
+          },
+          "max_lines": {
+            "type": "integer",
+            "description": "Cap the number of returned lines. If hit, the response sets truncated:true."
+          }
+        },
+        "required": ["path", "id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_search_blocks",
+      "description": "Lightweight keyword search across block metadata, title and summary — never scans body content. Case-insensitive substring match, ranked by match count. Returns manifest-shaped results [{id, type, status, title, line}]. Use to locate candidate blocks by topic before reading them.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the Markdown+ document." },
+          "query": { "type": "string", "description": "Keyword or phrase to search for." },
+          "limit": { "type": "integer", "description": "Max results to return. Default 20." }
+        },
+        "required": ["path", "query"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_resolve_xref",
+      "description": "Resolve a block's relationships: parent, children, superseded-by / supersedes, and related ids. Each reference is resolved to a small descriptor (or marked found:false if it points nowhere). Use to follow decision history and cross-links.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the Markdown+ document." },
+          "id": { "type": "string", "description": "Block id (without the leading '#')." }
+        },
+        "required": ["path", "id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "mdp_tree",
+      "description": "Return the full block hierarchy of a document as nested nodes ({id, type, status, title, line, children}). Metadata-only, no body content. Use for a one-shot structural overview of a whole document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the Markdown+ document." }
+        },
+        "required": ["path"]
+      }
+    }
+  }
+]

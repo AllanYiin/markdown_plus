@@ -79,9 +79,21 @@ markdown_plus/
 │   ├── python/
 │   │   ├── validator.py
 │   │   ├── viewer.py
-│   │   └── rewriter.py
+│   │   ├── rewriter.py
+│   │   ├── query.py             # Layer 2 block-query API(漸進式揭露)
+│   │   └── mdp.py               # `mdp` CLI:list / tree / get / read / search / xref
 │   └── node/
-│       └── rewriter.mjs
+│       ├── rewriter.mjs
+│       ├── query.mjs            # query.py 的 Node 對應
+│       └── mdp.mjs              # `mdp` CLI 的 Node 對應
+│
+├── tools/                       # AI agent 整合資產
+│   └── openai-function-defs.json  # block-query 的 OpenAI function calling schemas
+│
+├── mcp-server/                  # Markdown+ MCP server(block-query as MCP tools)
+│   ├── mdp_mcp_server.py        # MCP stdio server + CLI 模式,複用 cli/python/query.py
+│   ├── requirements.txt         # mcp>=1.2.0
+│   └── README.md
 │
 ├── docs/                        # 完整文件
 │   ├── 01-what-is-markdown-plus.md
@@ -91,6 +103,7 @@ markdown_plus/
 │   ├── 05-code-fence-preservation.md
 │   ├── 06-worked-examples.md
 │   ├── 07-benchmark-results.md
+│   ├── 08-block-based-query.md
 │   ├── deploy-zeabur.md
 │   └── CHANGELOG.md
 │
@@ -168,6 +181,41 @@ npm install openai
 node cli/node/rewriter.mjs --from markdown input.md > output.mdp.md
 ```
 
+## Block-based query（漸進式揭露）
+
+Markdown+ 的 block 結構讓 AI agent 不必把整份文件讀進 context——可以先調出
+block manifest、再看單一 block 的 metadata、最後只讀真正需要的 block。對一份
+100-block 的長文件回答「有哪些 open decision」，從 ~20,000 tokens 降到 ~800。
+
+三種對外介面共用同一套 `cli/python/query.py` 邏輯：
+
+```bash
+# CLI:list manifest → 過濾 → 只讀命中的 block
+python cli/python/mdp.py list   public/samples/decision-record.mdp.md --type task --status open
+python cli/python/mdp.py read   public/samples/decision-record.mdp.md action-rollout
+python cli/python/mdp.py tree   public/samples/decision-record.mdp.md
+python cli/python/mdp.py search public/samples/decision-record.mdp.md turborepo
+# Node 版:node cli/node/mdp.mjs list <doc> ...
+
+# HTTP REST(server.py 啟動後):
+curl "http://localhost:8000/api/mdp/list?path=samples/decision-record.mdp.md&type=task&status=open"
+curl "http://localhost:8000/api/mdp/read?path=samples/decision-record.mdp.md&id=decision"
+```
+
+OpenAI agent 框架可直接載入 `tools/openai-function-defs.json`。給 Claude 用則跑
+MCP server(同 7 個工具,也有 CLI 模式可獨立測試):
+
+```bash
+pip install -r mcp-server/requirements.txt
+python mcp-server/mdp_mcp_server.py --list-tools          # CLI 模式:列出工具
+python mcp-server/mdp_mcp_server.py --selftest            # CLI 模式:標準煙霧測試
+python mcp-server/mdp_mcp_server.py                       # 當 MCP stdio server 跑
+```
+
+`query.py` / `query.mjs` 內建 mtime-based parse cache,`/api/mdp/*` 與 MCP server
+被高頻打也不會重複 parse。完整說明見
+**[docs/08-block-based-query.md](docs/08-block-based-query.md)**。
+
 ## Markdown+ at a glance
 
 - **Bullet-list block**:`- **#kebab-id** ` ``type:state`` ` ``status:active`` ` ...`
@@ -212,6 +260,7 @@ PRs welcome。重點改動方向:
 - 新增 `type:` 種類 → 同步更新 viewer 投影規則 + `docs/03-metadata-vocabulary.md`
 - 改 viewer 行為 → 在 `public/lib/mdp-viewer.mjs`(browser)與 `cli/python/viewer.py`(CLI)同步維護
 - 改 validator 規則 → 在 `public/lib/mdp-validator.mjs` 與 `cli/python/validator.py` 同步
+- 改 block-query 邏輯 → 在 `cli/python/query.py` 與 `cli/node/query.mjs` 同步;`server.py` 的 `/api/mdp/*` 直接複用 `query.py`
 
 ## License
 
