@@ -191,7 +191,7 @@ export class KeywordExtractor {
   }
 }
 
-function detectStructuralTags(bodyText) {
+function detectStructuralTags(bodyText, blockType) {
   const tags = [];
   const mermaidRe = /^[ \t]*```[ \t]*mermaid\b[ \t]*\r?\n([\s\S]*?)^[ \t]*```/gm;
   let mm;
@@ -210,7 +210,39 @@ function detectStructuralTags(bodyText) {
     }
   }
   if (/^[ \t]*```[ \t]*svg\b/m.test(bodyText) && !tags.includes("svg")) tags.push("svg");
+  if (blockType === "table" || blockType === "targets") {
+    const headers = extractTableColumnHeaders(bodyText);
+    for (const h of headers) if (!tags.includes(h)) tags.push(h);
+  }
   return tags;
+}
+
+function extractTableColumnHeaders(bodyText) {
+  const lines = bodyText.split(/\r?\n/);
+  for (let i = 0; i < lines.length - 1; i++) {
+    const headerLine = lines[i];
+    const sepLine = lines[i + 1] || "";
+    if (TABLE_ROW_RE.test(headerLine) && TABLE_SEP_RE.test(sepLine)) {
+      let body = headerLine.trim();
+      if (body.startsWith("|")) body = body.slice(1);
+      if (body.endsWith("|")) body = body.slice(0, -1);
+      const cells = body.split("|").map(c => c.trim());
+      const out = [];
+      for (const raw of cells) {
+        const cleaned = raw
+          .replace(/`[^`]*`/g, "")
+          .replace(/\*\*([^*]+)\*\*/g, "$1")
+          .replace(/\*([^*]+)\*/g, "$1")
+          .replace(/^[\s—–-]+|[\s—–-]+$/g, "")
+          .trim();
+        if (cleaned.length >= 1 && cleaned.length <= 24 && /[A-Za-z一-鿿0-9]/.test(cleaned)) {
+          out.push(cleaned);
+        }
+      }
+      return out;
+    }
+  }
+  return [];
 }
 
 function renderMermaidToggle(codeText) {
@@ -604,7 +636,7 @@ export function renderDocument(text, opts = {}) {
       for (const b of blocks) {
         if (b.metadata.keywords) continue;
         const bodyText = b.bodyLines.join("\n");
-        const structural = detectStructuralTags(bodyText);
+        const structural = detectStructuralTags(bodyText, b.type);
         const kws = extractor.keywordsForBlock(bodyText, candidates, perBlock);
         const merged = [...structural, ...kws.filter(k => !structural.includes(k))];
         if (merged.length) b._autoKeywords = merged;
