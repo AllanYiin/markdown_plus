@@ -623,32 +623,18 @@ export function renderDocument(text, opts = {}) {
     const introText = introLines.join("\n").trim();
     if (introText) intro = `<p class="mdp-intro">${inlineMd(introText)}</p>`;
   }
-  // Hierarchical TOC mirroring the block tree (top + children recursively).
-  function buildTocItem(b) {
-    const title = b.metadata.title || b.id.replaceAll("-", " ");
-    const typeBadge = b.type ? ` <span class="mdp-toc-type">${esc(b.type)}</span>` : "";
-    let inner = `<a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}" title="${esc(b.id)}">${esc(title)}${typeBadge}</a>`;
-    if (b.children && b.children.length) {
-      const seenVg = new Set();
-      const childItems = [];
-      for (const cid of b.children) {
-        const cb = byId.get(cid);
-        if (!cb) continue;
-        const cvg = cb.metadata["variant-group"];
-        if (cvg) { if (seenVg.has(cvg)) continue; seenVg.add(cvg); }
-        childItems.push(buildTocItem(cb));
-      }
-      if (childItems.length) inner += `<ol>${childItems.join("")}</ol>`;
-    }
-    return `<li>${inner}</li>`;
-  }
+  // Sidebar TOC lists only top-level blocks. Nested children remain as inline
+  // `mdp-toc-inline` navs emitted by renderBlock when a parent has ≥3 non-variant
+  // children — that's "其餘層級則維持導航列".
   const tocSeen = new Set();
   const tocItems = top.flatMap(b => {
     const vg = b.metadata["variant-group"];
     if (vg) { if (tocSeen.has(vg)) return []; tocSeen.add(vg); }
-    return buildTocItem(b);
+    const title = b.metadata.title || b.id.replaceAll("-", " ");
+    const typeBadge = b.type ? ` <span class="mdp-toc-type">${esc(b.type)}</span>` : "";
+    return `<li><a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}" title="${esc(b.id)}">${esc(title)}${typeBadge}</a></li>`;
   }).join("");
-  const sidebar = blocks.length >= 2
+  const sidebar = top.length >= 3
     ? `<aside class="mdp-sidebar" aria-label="文件目錄"><div class="mdp-sidebar-title">目錄</div><ol class="mdp-toc">${tocItems}</ol></aside>`
     : "";
 
