@@ -1166,67 +1166,94 @@ body.has-fullscreen-pane { overflow: hidden; }
   padding: 0;
   max-width: none;
   gap: 0;
-  grid-template-columns: 1fr;
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  align-items: start;
 }
-.pg-preview .mdp-main { padding: var(--sp-4); }
+/* Collapse only at very narrow widths — preview pane is often ~700px wide */
+@media (max-width: 560px) {
+  .pg-preview .mdp-layout { grid-template-columns: 1fr; }
+}
+.pg-preview .mdp-main { padding: var(--sp-4); min-width: 0; }
 .pg-preview .mdp-doc-header h1 { font-size: 24px; }
 
-/* Sidebar TOC → horizontal sticky chip bar at preview top */
+/* Sidebar TOC → vertical left sidebar mirroring the block tree (含子 block) */
 .pg-preview .mdp-sidebar {
   position: sticky;
   top: 0;
-  align-self: stretch;
-  max-height: none;
-  padding: var(--sp-2) var(--sp-3);
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: var(--sp-3) var(--sp-3);
   background: var(--surface-2);
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   border-radius: 0;
   z-index: 2;
-  overflow-x: auto;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
 }
 .pg-preview .mdp-sidebar .mdp-sidebar-title {
-  margin: 0;
-  flex-shrink: 0;
+  margin: 0 0 var(--sp-2);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--accent-deep);
 }
 .pg-preview .mdp-sidebar .mdp-toc {
-  display: inline-flex;
-  flex-wrap: nowrap;
-  gap: 4px;
+  list-style: none;
   margin: 0;
   padding: 0;
-  align-items: center;
 }
-.pg-preview .mdp-sidebar .mdp-toc li {
-  display: inline-block;
-  margin: 0;
+.pg-preview .mdp-sidebar .mdp-toc ol {
+  list-style: none;
+  margin: 2px 0 4px var(--sp-2);
+  padding: 0 0 0 var(--sp-2);
+  border-left: 1px dashed var(--border-strong);
 }
+.pg-preview .mdp-sidebar .mdp-toc li { margin: 1px 0; }
 .pg-preview .mdp-sidebar .mdp-toc a {
-  display: inline-block;
-  padding: 4px 12px;
-  font-size: 12px;
+  display: block;
+  padding: 3px 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 0;
-  background: var(--surface);
-  white-space: nowrap;
-  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+  text-decoration: none;
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast), color var(--t-fast);
+  word-break: break-all;
+}
+.pg-preview .mdp-sidebar .mdp-toc > li > a {
+  font-weight: 600;
+  color: var(--text);
+}
+.pg-preview .mdp-sidebar .mdp-toc ol a {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 .pg-preview .mdp-sidebar .mdp-toc a:hover {
   background: var(--accent-soft);
   color: var(--accent-deep);
-  border-color: var(--accent);
 }
 .pg-preview .mdp-sidebar .mdp-toc a.mdp-toc-active {
-  background: var(--accent);
-  color: var(--accent-on);
-  border-color: var(--accent);
-  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 700;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.pg-preview .mdp-sidebar .mdp-toc-type {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  vertical-align: middle;
 }
 
 /* Inline (nested) TOC inside a parent block — flat */
@@ -1516,6 +1543,12 @@ body.mdp-doc {
 }
 .mdp-toc { list-style: none; padding: 0; margin: 0; }
 .mdp-toc li { margin: 2px 0; }
+.mdp-toc ol {
+  list-style: none;
+  margin: 2px 0 4px 8px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--mdp-border);
+}
 .mdp-toc a {
   display: block;
   padding: 4px 8px;
@@ -1524,11 +1557,27 @@ body.mdp-doc {
   border-left: 3px solid transparent;
   border-radius: 4px;
 }
+.mdp-toc > li > a { font-weight: 600; }
+.mdp-toc ol a { font-size: 13px; color: var(--mdp-muted); font-weight: 400; }
 .mdp-toc a:hover { background: var(--mdp-bg); }
 .mdp-toc a.mdp-toc-active {
   border-left-color: var(--mdp-accent);
   background: var(--mdp-bg);
   color: var(--mdp-accent);
+}
+.mdp-toc-type {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mdp-muted);
+  background: var(--mdp-surface);
+  border: 1px solid var(--mdp-border);
+  border-radius: 999px;
+  vertical-align: middle;
 }
 
 /* Inline TOC inside parent block */
@@ -3312,14 +3361,33 @@ function renderDocument(text, opts = {}) {
     }
   }
 
+  // Build a hierarchical TOC that mirrors the block tree (top-level blocks + their
+  // children recursively). variant-group siblings are deduped to a single entry.
+  function buildTocItem(b) {
+    const title = b.metadata.title || b.id.replaceAll("-", " ");
+    const typeBadge = b.type ? ` <span class="mdp-toc-type">${esc(b.type)}</span>` : "";
+    let inner = `<a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}" title="${esc(b.id)}">${esc(title)}${typeBadge}</a>`;
+    if (b.children && b.children.length) {
+      const seenVg = new Set();
+      const childItems = [];
+      for (const cid of b.children) {
+        const cb = byId.get(cid);
+        if (!cb) continue;
+        const cvg = cb.metadata["variant-group"];
+        if (cvg) { if (seenVg.has(cvg)) continue; seenVg.add(cvg); }
+        childItems.push(buildTocItem(cb));
+      }
+      if (childItems.length) inner += `<ol>${childItems.join("")}</ol>`;
+    }
+    return `<li>${inner}</li>`;
+  }
   const tocSeen = new Set();
   const tocItems = top.flatMap(b => {
     const vg = b.metadata["variant-group"];
     if (vg) { if (tocSeen.has(vg)) return []; tocSeen.add(vg); }
-    const t = b.metadata.title || b.id.replaceAll("-", " ");
-    return `<li><a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}">${esc(t)}</a></li>`;
+    return buildTocItem(b);
   }).join("");
-  const sidebar = top.length >= 3
+  const sidebar = blocks.length >= 2
     ? `<aside class="mdp-sidebar" aria-label="文件目錄"><div class="mdp-sidebar-title">目錄</div><ol class="mdp-toc">${tocItems}</ol></aside>`
     : "";
 
