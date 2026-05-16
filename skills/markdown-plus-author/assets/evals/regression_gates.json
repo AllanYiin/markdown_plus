@@ -1,0 +1,30 @@
+{
+  "skill": "markdown-plus-author",
+  "version": "2026-05-13",
+  "minimum_pass_rate_delta": 0.05,
+  "max_time_increase_seconds": 30,
+  "max_output_token_increase": 5000,
+  "max_under_trigger_failures": 1,
+  "max_over_trigger_failures": 1,
+  "must_pass_functional_ids": [
+    "f-rewrite-md-with-tree",
+    "f-rewrite-html-base64",
+    "f-history-with-superseded",
+    "f-tutorial-variant-group"
+  ],
+  "must_pass_trigger_ids": [
+    "t-write-devnote",
+    "t-rewrite-md",
+    "t-rewrite-html"
+  ],
+  "must_not_trigger_ids": [
+    "n-slide",
+    "n-email",
+    "n-mermaid-only"
+  ],
+  "notes": [
+    "f-rewrite-md-with-tree 是 verbatim preservation 的核心驗證 — fail 等於整個 rewriter 不能交付",
+    "f-rewrite-html-base64 確認 skill 不會把使用者的本地圖檔變成 token-burning base64",
+    "t-rewrite-md / t-rewrite-html 是兩個最重要的 entry point;under-trigger 會讓 skill 形同無效"
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "skill": "markdown-plus-author",
+  "version": "2026-05-13",
+  "triggering": {
+    "should_trigger": [
+      {"id": "t-write-devnote", "query": "幫我寫一份 Auth Service 的開發筆記,要用 Markdown+ 格式"},
+      {"id": "t-write-adr", "query": "撰寫 ADR-0014 把 monorepo 工具從 Lerna 換成 Turborepo 的決策紀錄,用 Markdown+"},
+      {"id": "t-rewrite-md", "query": "把這份 markdown 改寫成 Markdown+ 格式,加上 block id 跟 metadata"},
+      {"id": "t-rewrite-html", "query": "這份 HTML dashboard 怎麼轉成 Markdown+?幫我改"},
+      {"id": "t-status-report", "query": "幫我寫一份 Q1 status report,要有 KPI 跟 dashboard,Markdown+ 結構"},
+      {"id": "t-explain-syntax", "query": "Markdown+ 怎麼寫?bullet block + metadata 的格式是什麼?"},
+      {"id": "t-runbook", "query": "用 Markdown+ 整理一份 Postgres failover runbook"},
+      {"id": "t-research", "query": "把這份向量資料庫比較的研究報告改成 Markdown+,要有 chart 跟 table"}
+    ],
+    "should_not_trigger": [
+      {"id": "n-slide", "query": "幫我做 12 頁簡報的大綱", "reason": "投影片 → slide-content-planner / pptx-maker"},
+      {"id": "n-email", "query": "幫我潤一封給客戶的 email", "reason": "短訊 / email → humanize-text"},
+      {"id": "n-essay", "query": "把這段散文改寫得更通順", "reason": "純散文 → longform-writing-process"},
+      {"id": "n-mermaid-only", "query": "幫我畫一個 sequenceDiagram", "reason": "只要圖 → mermaid-diagram"},
+      {"id": "n-react-bug", "query": "我這個 React 元件壞了,幫我修", "reason": "純 bug fix,沒文件"},
+      {"id": "n-spec-greenfield", "query": "幫我把這個產品想法整理成 spec(技術 + 白話 + Codex stage plan)", "reason": "PRD/spec 三件套 → spec-organizer"},
+      {"id": "n-pdf-extract", "query": "這份 PDF 抓成 markdown 給我", "reason": "純抽取 → markdown-anything"}
+    ],
+    "near_miss": [
+      {"id": "nm-tech-doc", "query": "幫我寫一份 API 的 README,要 quickstart + 範例", "expect": "可能 markdown-plus-author 或 technical-documentation-writer 都合理;若使用者強調 block 結構或 metadata,本 skill 勝出"},
+      {"id": "nm-meeting-notes", "query": "把這份會議紀錄整理一下", "expect": "若使用者沒指定格式,可能不需要 Markdown+;若要保留決策、行動項、未解問題的結構,本 skill 勝出"},
+      {"id": "nm-convert-to-md", "query": "幫我把這個 HTML 變成 markdown", "expect": "若不指定 +,markdown-anything 勝;若指定 block 化或 +,本 skill 勝"}
+    ],
+    "multilingual": [
+      {"id": "ml-en-write", "query": "Write a decision record in Markdown+"},
+      {"id": "ml-en-rewrite", "query": "Convert this HTML document to Markdown+ with proper blocks and metadata"},
+      {"id": "ml-mixed", "query": "把這份 dev note 改成 Markdown+ format,記得每個 block 都要有 type 跟 status"},
+      {"id": "ml-shorthand", "query": "幫我把這文件用 +md 整理一下"}
+    ]
+  },
+  "functional": [
+    {
+      "id": "f-fresh-dev-note",
+      "name": "Fresh write: Auth service dev note",
+      "given": "User provides topic 'Q2 Auth service 現況 + 已知 issues + Q3 action items',no source content",
+      "when": "Skill invoked with fresh_write input type",
+      "then": [
+        "Output starts with single H1",
+        "Contains at least 3 top-level blocks (e.g. #current-state, #issues, #actions)",
+        "Each block has type / status / updated metadata",
+        "No `:::` fences anywhere",
+        "If any KPI mentioned, type:kpi with value + matching prose"
+      ]
+    },
+    {
+      "id": "f-rewrite-md-with-tree",
+      "name": "Rewrite markdown that contains ASCII directory tree",
+      "given": "Input markdown has H2 sections including one with a fenced code block containing ASCII tree (│ ├ └)",
+      "when": "Skill rewrites to Markdown+",
+      "then": [
+        "Tree appears in output inside ``` fence",
+        "Every line of the tree is preserved byte-for-byte (whitespace + box-drawing chars intact)",
+        "Tree is NOT collapsed into a paragraph",
+        "Containing block has type:diagram (or figure) with diagram-type:ascii-tree (or chart-type)",
+        "Block has a prose companion below the fence"
+      ]
+    },
+    {
+      "id": "f-rewrite-html-base64",
+      "name": "HTML input contains base64 image",
+      "given": "Input HTML has <img src='data:image/png;base64,...'>",
+      "when": "Skill processes input",
+      "then": [
+        "Skill does NOT include the base64 in output",
+        "Skill EITHER writes a TODO marker pointing to external path, OR stops and asks the user",
+        "Output contains zero `data:` URIs or `base64,` substrings"
+      ]
+    },
+    {
+      "id": "f-history-with-superseded",
+      "name": "History/deprecated block with superseded-by",
+      "given": "User asks to add a #auth-v1 block describing deprecated v1, with #current-state describing v2",
+      "when": "Skill writes blocks",
+      "then": [
+        "#auth-v1 has type:history AND visibility:collapsed AND superseded-by:current-state",
+        "#current-state is referenced and exists"
+      ]
+    },
+    {
+      "id": "f-tutorial-variant-group",
+      "name": "Install steps for mac/linux/windows",
+      "given": "Tutorial section has parallel install instructions for 3 OSes",
+      "when": "Skill writes tutorial",
+      "then": [
+        "Three sibling blocks share same variant-group: value",
+        "Each has distinct variant: value (mac/linux/windows)",
+        "Each contains a fenced code block with the OS-specific command verbatim"
+      ]
+    },
+    {
+      "id": "f-table-large-data",
+      "name": "Large table (>30 rows) gets externalized",
+      "given": "Source has a table with 50+ rows of sales data",
+      "when": "Skill rewrites",
+      "then": [
+        "Output block has data-source:./data/*.csv metadata",
+        "Inline table is replaced by schema summary + prose top-N observations",
+        "Block has type:table"
+      ]
+    },
+    {
+      "id": "f-kpi-with-value",
+      "name": "KPI block has value + matching prose",
+      "given": "Source mentions 'MRR is $1.2M, Q1 target was $1.5M, up 12% from last quarter'",
+      "when": "Skill writes block",
+      "then": [
+        "Block has type:kpi",
+        "Metadata contains value:1.2M, target:1.5M, delta:+12%",
+        "Prose paragraph also mentions '1.2M' (consistent with metadata)"
+      ]
+    }
+  ],
+  "edge_abuse": [
+    {"id": "e-secret-in-input", "query": "改寫這份文件:OPENAI_API_KEY=sk-proj-abc123...", "expect": "Skill 必須不 echo key,並停下來請使用者清理輸入"},
+    {"id": "e-only-prose", "query": "這篇 500 字散文改成 Markdown+", "expect": "Skill 問使用者是否真的需要 block 化;說明 prose-heavy 文件適合 longform-writing-process"},
+    {"id": "e-empty-input", "query": "改寫:", "expect": "Skill 報告輸入為空,請使用者補內容"},
+    {"id": "e-binary-input", "query": "改寫這個 PDF [附件].", "expect": "Skill 報告需要文字輸入,建議先用 markdown-anything 提取"}
+  ]
+}
