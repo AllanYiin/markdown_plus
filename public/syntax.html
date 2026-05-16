@@ -866,6 +866,8 @@ footer.site-footer .footer-mark {
       <li><a href="#vocab">受控字彙表</a></li>
       <li><a href="#constraints">約束關係</a></li>
       <li><a href="#forbidden">禁止清單</a></li>
+      <li><a href="#viz-fences">視覺化 fence (svg / mermaid)</a></li>
+      <li><a href="#keywords">自動關鍵詞抽取(無辭典)</a></li>
       <li><a href="#philosophy">設計理念對照</a></li>
     </ol>
     <h4>跳到別頁</h4>
@@ -961,6 +963,7 @@ footer.site-footer .footer-mark {
         <li><code class="site-code-inline">variant-group:install</code> + <code class="site-code-inline">variant:mac</code> — 同 group 的 sibling 會被 viewer 聚合成 tab</li>
         <li>KPI: <code class="site-code-inline">value: target: delta: unit:</code></li>
         <li>Gauge: <code class="site-code-inline">value: min: max: target: zones:[99:red,99.9:amber,99.95:green]</code></li>
+        <li><code class="site-code-inline">keywords:a,b,c</code> — block 關鍵詞清單。手動宣告永遠優先;未宣告時 viewer 會自動抽出(虛線 chip)。詳見 <a href="#keywords">自動關鍵詞抽取</a></li>
       </ul>
     </section>
 
@@ -987,13 +990,194 @@ footer.site-footer .footer-mark {
           <tr><td><code class="site-code-inline">&lt;script&gt; / &lt;style&gt;</code></td><td>留給 viewer</td></tr>
           <tr><td><code class="site-code-inline">class="" / style=""</code></td><td>留給 viewer</td></tr>
           <tr><td>Inline <code class="site-code-inline">data:image/...;base64,...</code></td><td>外部相對路徑</td></tr>
-          <tr><td>Inline <code class="site-code-inline">&lt;svg&gt;</code></td><td><code class="site-code-inline">![alt](./path.svg)</code></td></tr>
+          <tr><td>Raw <code class="site-code-inline">&lt;svg&gt;</code> 直接寫在段落或 HTML 容器內</td><td>包進 <code class="site-code-inline">```svg</code> fence(<= 16 KB)或外部檔 <code class="site-code-inline">![alt](./path.svg)</code></td></tr>
+          <tr><td><code class="site-code-inline">```svg</code> fence 內容 &gt; 16 KB</td><td>拆成 <code class="site-code-inline">./diagrams/*.svg</code> 外部檔</td></tr>
           <tr><td>巨型 inline chart spec (>80 行)</td><td>拆到 <code class="site-code-inline">./charts/*.json</code></td></tr>
           <tr><td>巨型 inline 表格 (>30 列)</td><td>拆到 <code class="site-code-inline">./data/*.csv</code></td></tr>
           <tr><td>寫死 caption 編號 (<code class="site-code-inline">Figure 1:</code>)</td><td><code class="site-code-inline">*Figure: ...*</code>,viewer 自動編號</td></tr>
           <tr><td>自由 <code class="site-code-inline">type:</code> 值</td><td>受控字彙表或 <code class="site-code-inline">x-</code> 前綴</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section id="viz-fences">
+      <h2>視覺化 fence:<code class="site-code-inline">```svg</code> 與 <code class="site-code-inline">```mermaid</code></h2>
+
+      <p>
+        圖表 / 流程圖 / 簡單示意圖可以用兩種 <strong>標準 code fence</strong> 內聯,
+        在 GitHub / Obsidian 仍是合法的 code block(graceful degradation),
+        在 Markdown+ viewer 才長出 <strong>graph / code 切換 toolbar</strong>。
+      </p>
+
+      <h3><code class="site-code-inline">```svg</code> — 內聯向量圖</h3>
+      <pre class="site-code"><code>- **#sla-trend** `type:figure` `media:svg`
+
+  *Figure: API SLA 月度趨勢*
+
+  ```svg
+  &lt;svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg"&gt;
+    &lt;polyline points="50,40 130,56 210,70 290,72" fill="none" stroke="#0ea5e9" stroke-width="2"/&gt;
+    ...
+  &lt;/svg&gt;
+  ```
+
+  4 月 SLA 跌至 99.92%,低於目標。</code></pre>
+
+      <h4>viewer 行為</h4>
+      <table class="site-table">
+        <thead><tr><th>SVG 大小</th><th>viewer 動作</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>&le; 16 KB</td><td>渲染圖 + <code class="site-code-inline">graph</code> / <code class="site-code-inline">code</code> 雙視圖 toolbar</td><td>toolbar 顯示 <code class="site-code-inline">svg · X.Y KB</code></td></tr>
+          <tr><td>&gt; 16 KB</td><td>強制只顯示 code + warning callout</td><td>提示拆成 <code class="site-code-inline">./diagrams/*.svg</code></td></tr>
+        </tbody>
+      </table>
+
+      <h4>注入前 sanitize</h4>
+      <ul>
+        <li><code class="site-code-inline">&lt;script&gt;</code> tag 整段移除</li>
+        <li><code class="site-code-inline">on*=</code> event handler attribute 全部去掉(onclick / onload / onerror …)</li>
+        <li>結構標記(<code class="site-code-inline">&lt;defs&gt; &lt;style&gt; &lt;marker&gt; &lt;filter&gt;</code>)保留</li>
+      </ul>
+
+      <h3><code class="site-code-inline">```mermaid</code> — Mermaid 圖表</h3>
+      <pre class="site-code"><code>- **#refresh-flow** `type:diagram` `diagram-type:mermaid`
+
+  *Figure: Token refresh 流程*
+
+  ```mermaid
+  sequenceDiagram
+      participant C as Client
+      participant G as Gateway
+      C-&gt;&gt;G: request with expired token
+      G--&gt;&gt;C: new access token
+  ```
+
+  refresh 流程從 client 看是透明的。</code></pre>
+
+      <p>
+        viewer 動態 import Mermaid 10 (CDN) 渲染為 SVG;
+        toolbar 與 SVG fence 共用元件,「graph」視圖顯示渲染後的圖、
+        「code」視圖顯示原始 mermaid source。
+      </p>
+
+      <h4>自動抓取的結構關鍵詞</h4>
+      <p>
+        含 <code class="site-code-inline">```mermaid</code> 的 block 自動帶
+        <code class="site-code-inline">mermaid</code> +
+        <strong>圖表類型</strong>(從 fence 第一個非空行偵測):
+      </p>
+      <table class="site-table">
+        <thead><tr><th>fence 第一行</th><th>抽出的關鍵詞</th></tr></thead>
+        <tbody>
+          <tr><td><code class="site-code-inline">sequenceDiagram</code></td><td><code class="site-code-inline">mermaid, sequenceDiagram</code></td></tr>
+          <tr><td><code class="site-code-inline">flowchart TD</code></td><td><code class="site-code-inline">mermaid, flowchart</code></td></tr>
+          <tr><td><code class="site-code-inline">classDiagram</code></td><td><code class="site-code-inline">mermaid, classDiagram</code></td></tr>
+          <tr><td><code class="site-code-inline">gantt</code></td><td><code class="site-code-inline">mermaid, gantt</code></td></tr>
+          <tr><td><code class="site-code-inline">graph LR</code></td><td><code class="site-code-inline">mermaid, graph</code></td></tr>
+          <tr><td><code class="site-code-inline">stateDiagram</code> / <code class="site-code-inline">erDiagram</code> / <code class="site-code-inline">pie</code> / ...</td><td>同上規則,取 fence 第一個 identifier</td></tr>
+        </tbody>
+      </table>
+      <p>
+        含 <code class="site-code-inline">```svg</code> 的 block 則永遠帶
+        <code class="site-code-inline">svg</code> 作第一個關鍵詞。
+      </p>
+    </section>
+
+    <section id="keywords">
+      <h2>自動關鍵詞抽取(無辭典)</h2>
+
+      <p>
+        每個 block 沒宣告 <code class="site-code-inline">keywords:</code> 時,
+        viewer 會用 <strong>純統計、無辭典依賴</strong>的演算法即時抽出
+        top-N 關鍵詞,在 block header 下方以虛線 chip 顯示。
+        手動宣告永遠優先;沒宣告才填 auto chip。
+      </p>
+
+      <h3>演算法 — N-gram + PMI + 左右熵</h3>
+      <p>完全照「無詞典新詞發現」標準演算法實作,瀏覽器端純 JS 跑,毫秒級完成:</p>
+
+      <ol style="line-height: 1.9;">
+        <li>
+          <strong>文本清理</strong>:剝除 code fence、inline code、image / link
+          markdown、heading 標記、block header 行,僅保留 prose。
+        </li>
+        <li>
+          <strong>N-gram 枚舉</strong>:
+          <ul>
+            <li>CJK 連續字串 2 ~ 8 字(<code class="site-code-inline">min_len=2, max_len=8</code>)</li>
+            <li>ASCII token <code class="site-code-inline">[A-Za-z][A-Za-z0-9+\-]*</code> 並行抓取
+              (適用 <code class="site-code-inline">Markdown+ / block-based / SDK</code> 等混合語術語)</li>
+          </ul>
+        </li>
+        <li>
+          <strong>內部凝固度(PMI cohesion)</strong>:
+          對候選詞 <code class="site-code-inline">w</code> 嘗試所有二分切分,
+          算 <code class="site-code-inline">PMI(x, y) = log(P(xy) / P(x)P(y)))</code>,
+          取 <strong>最小值</strong>作 cohesion(代表最弱的內部連結強度,反映「整體是否確實一起出現」)。
+          門檻 <code class="site-code-inline">min_pmi &ge; 1.0</code>。
+        </li>
+        <li>
+          <strong>左右自由度(Shannon entropy)</strong>:
+          收集候選詞左、右鄰字分佈,各計算 Shannon 熵。
+          兩端皆需 <code class="site-code-inline">&ge; 0.4</code>。
+          熵高表示鄰字多樣 = 該詞能獨立出現(像「人工智慧」左右搭配很多),
+          熵低表示鄰字固定 = 是更長詞的一部分(像「式人工智」永遠夾在「生成式人工智慧」裡會被濾掉)。
+        </li>
+        <li>
+          <strong>詞頻過濾</strong>:出現次數 <code class="site-code-inline">&ge; 2</code>。
+        </li>
+        <li>
+          <strong>綜合排序</strong>:
+          <code class="site-code-inline">score = freq &times; min-PMI &times; min(left, right)-entropy</code>,
+          降冪取 top-K(預設 80 個全域候選 → 每 block 取 top-5)。
+        </li>
+        <li>
+          <strong>子字串抑制</strong>:已 kept 的長詞會擠掉它的子字串
+          (若 freq 接近 ≥ 60%)——比如「人工智慧」入選後就會擠掉
+          只是它子字串的「人工」「智慧」。
+        </li>
+        <li>
+          <strong>每 block 投影</strong>:對該 block body 計算每個全域候選的命中次數,
+          <code class="site-code-inline">block_score = global_score &times; log(occ + 1)</code>,
+          排序取 top-5。
+        </li>
+      </ol>
+
+      <h3>結構標籤前置</h3>
+      <p>
+        以下兩類訊號 n-gram 抓不到(fence 內容被清理階段剝除),所以由獨立 helper 注入並 <strong>排在自動抽取詞之前</strong>:
+      </p>
+      <ul>
+        <li>含 <code class="site-code-inline">```svg</code> fence → 永遠先放 <code class="site-code-inline">svg</code></li>
+        <li>含 <code class="site-code-inline">```mermaid</code> fence → 先放 <code class="site-code-inline">mermaid</code> + 圖表類型(見上)</li>
+      </ul>
+
+      <h3>預設參數一覽</h3>
+      <table class="site-table">
+        <thead><tr><th>參數</th><th>預設值</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td><code class="site-code-inline">min_len</code></td><td>2</td><td>CJK n-gram 最小長度</td></tr>
+          <tr><td><code class="site-code-inline">max_len</code></td><td>8</td><td>CJK n-gram 最大長度(中文詞通常 ≤ 6,留 buffer 抓「概念組合詞」)</td></tr>
+          <tr><td><code class="site-code-inline">min_freq</code></td><td>2</td><td>單檔場景的下限(大語料建議 &ge; 5)</td></tr>
+          <tr><td><code class="site-code-inline">min_pmi</code></td><td>1.0</td><td>單檔較寬鬆;大語料 PDF 建議 3</td></tr>
+          <tr><td><code class="site-code-inline">min_entropy</code></td><td>0.4</td><td>左右兩端 Shannon 熵下限</td></tr>
+          <tr><td><code class="site-code-inline">min_ascii_len</code></td><td>3</td><td>ASCII token 最短長度(避開 `is`, `of` 等)</td></tr>
+          <tr><td><code class="site-code-inline">topK</code></td><td>80 / 5</td><td>全域 80,每 block 5</td></tr>
+        </tbody>
+      </table>
+
+      <h3>手動覆寫</h3>
+      <p>
+        把 <code class="site-code-inline">keywords:a,b,c</code> 放進 block header,viewer 就改顯示實線 chip,不再跑自動抽取。playground sub-header 的「<strong>寫入 keywords</strong>」按鈕會把 viewer 計算出的 auto 詞用 inline-code 形式寫進 source(`<code class="site-code-inline">`keywords:</code>`<code class="site-code-inline">a,b,c</code>`<code class="site-code-inline">`</code>`),套用前 confirm dialog 列前 8 個 block 的建議供預覽。
+      </p>
+
+      <h3>複雜度</h3>
+      <p>
+        固定 <code class="site-code-inline">L</code> (最大候選長度)下,演算法是
+        <code class="site-code-inline">O(N &times; L)</code> 線性掃描 +
+        <code class="site-code-inline">O(V log V)</code> 排序。文件變 10 倍大、時間約 10 倍,不是平方。
+        記憶體主要是候選 Map,經 <code class="site-code-inline">min_freq</code> 過濾後規模有限。
+      </p>
     </section>
 
     <section id="philosophy">

@@ -95,6 +95,13 @@ markdown_plus/
 │   ├── requirements.txt         # mcp>=1.2.0
 │   └── README.md
 │
+├── skills/                      # Claude Skills source(canonical)
+│   └── markdown-plus-author/    # 寫 / 改寫 Markdown+ 的 skill
+│       ├── SKILL.md
+│       ├── references/          # syntax / metadata / preservation / playbook ...
+│       └── assets/evals/        # trigger / functional / regression evals
+├── markdown-plus-author.skill   # 從 skills/markdown-plus-author/ 打包的 .skill zip
+│
 ├── docs/                        # 完整文件
 │   ├── 01-what-is-markdown-plus.md
 │   ├── 02-syntax-reference.md
@@ -216,12 +223,76 @@ python mcp-server/mdp_mcp_server.py                       # 當 MCP stdio server
 被高頻打也不會重複 parse。完整說明見
 **[docs/08-block-based-query.md](docs/08-block-based-query.md)**。
 
+## Viewer enrichment(2026-05 起新增)
+
+source 仍是純 Markdown,以下功能由 viewer 在 client-side 從 source 推導,**不修改 source、不打 LLM**。
+
+### 1. SVG fence — 內聯渲染 + graph / code 切換
+
+` ```svg ` 圍籬碼(<= 16 KB)會被 viewer 渲染成「graph 圖示 / code 原始碼」雙視圖元件,toolbar 顯示檔案大小,點按鈕切換。超過 16 KB 顯示警告 callout 並強制只顯示 source code,提示拆成外部 `.svg` 檔。
+SVG 注入前自動去除 `<script>` tag 與 `on*=` event handler。
+
+```markdown
+- **#chart** `type:figure` `media:svg`
+
+  *Figure: SLA 月度趨勢*
+
+  \`\`\`svg
+  <svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="50,40 130,56 210,70 290,72" fill="none" stroke="#0ea5e9" stroke-width="2"/>
+    ...
+  </svg>
+  \`\`\`
+
+  4 月 SLA 跌至 99.92%,低於目標。
+```
+
+→ 在 GitHub / Obsidian 看到的仍是合法 code fence(graceful degradation);在 viewer 看到的是渲染後的 SVG。
+
+### 2. Mermaid fence — 同一 toggle 元件
+
+` ```mermaid ` 圍籬碼透過同一 toggle 元件渲染,「graph」視圖呼叫 Mermaid 10 動態 import 從 CDN 渲染,「code」視圖顯示原始 mermaid source。
+
+### 3. 自動關鍵詞抽取(無辭典中文 + 中英混合)
+
+每個 block 的 body 內容會被 `KeywordExtractor` 抽出 top-N 關鍵詞,在 block header 下方以虛線 chip 顯示(`AUTO KEYWORDS`)。**演算法完全無辭典依賴**,瀏覽器端純 JS 即時計算:
+
+| 步驟 | 做法 |
+|---|---|
+| 1. 文本清理 | 去掉 code fence / inline code / link / image / heading 標記 / block header 行 |
+| 2. N-gram 枚舉 | CJK 連續字串 2 ~ 8 字;ASCII token(`Markdown+` / `block-based`)並行抓取 |
+| 3. 內部凝固度 | PMI 對所有二分切分取最小值;`min_pmi ≥ 1.0` |
+| 4. 左右自由度 | 左、右鄰字 Shannon 熵 各 ≥ 0.4(衡量該詞能否獨立使用) |
+| 5. 詞頻過濾 | 出現次數 ≥ 2 |
+| 6. 綜合排序 | `score = freq × min-PMI × min(left, right)-entropy`,降冪 |
+| 7. 子字串抑制 | 較長的高分詞會擠掉它的子字串(若 freq 接近) |
+| 8. 結構標籤前置 | 含 ` ```svg ` 的 block 永遠先放 `svg`;含 ` ```mermaid ` 的 block 先放 `mermaid` + 圖表類型(`sequenceDiagram` / `flowchart` / `classDiagram` / `gantt` / `graph` …) |
+
+完全照「無詞典新詞發現」標準演算法實作(PMI + 左右熵雙閾值)。對 100-block 文件約毫秒級完成;ASCII token 走 log-frequency 當合成 cohesion(PMI-by-split 對拉丁字面意義不大)。
+
+#### 自動 vs 手動 keywords
+
+```markdown
+- **#decision-canary** `type:decision` `status:accepted` \
+  `keywords:canary,deployment,gradual-rollout`           ← 手動宣告(實線 chip)
+  決定採 canary 部署...
+
+- **#another-block** `type:note`                          ← 沒宣告 → viewer 自動抽(虛線 chip)
+  本季 latency p99 降至 218ms...
+```
+
+**手動宣告永遠優先**;沒宣告時 viewer 才填入 auto chip。Playground sub-header 的「**寫入 keywords**」按鈕會把抽出的 auto 詞用 inline-code 寫進 source,confirm dialog 列出前 8 個 block 的建議讓你預覽,你可拒絕。
+
+### 4. Playground 新增 sample
+
+`samples/svg-medical-flow.mdp.md` 用一張 12 KB 的醫藥行銷說服流程 SVG 示範中型 inline SVG 場景。從 playground 右上「載入檔案」載入即可預覽。
+
 ## Markdown+ at a glance
 
 - **Bullet-list block**:`- **#kebab-id** ` ``type:state`` ` ``status:active`` ` ...`
 - **三習慣**:
   1. 每個 substantive section 是 bullet block
-  2. 圖片、影片、SVG 一律外部相對路徑(絕不 base64)
+  2. 圖片、影片一律外部相對路徑(絕不 base64);SVG <= 16 KB 可用 ` ```svg ` fence 內聯,> 16 KB 仍須外部
   3. 每個 figure/table/chart/KPI 都有 prose companion 段
 - **三原則**:
   1. **Graceful degradation** — source 在純 markdown viewer 仍可讀
@@ -245,7 +316,11 @@ python mcp-server/mdp_mcp_server.py                       # 當 MCP stdio server
 | Dashboard grid | `type:dashboard` 容器內含多個 KPI |
 | Variant tabs | 同層 siblings 共用 `variant-group:` |
 | Dialogue bubbles | `type:dialogue` / `type:turn` + speaker |
-| Mermaid 圖 | 含 ```mermaid``` fence |
+| Mermaid 圖(graph/code 切換) | 含 ` ```mermaid ` fence |
+| 內聯 SVG(graph/code 切換) | 含 ` ```svg ` fence,<= 16 KB |
+| SVG 過大警示 | ` ```svg ` fence > 16 KB → 顯示 callout 與只顯示 code |
+| 自動關鍵詞(無辭典 PMI + 左右熵) | 每個 block 都會自動產出;手動 `keywords:` 取代 auto |
+| 「寫入 keywords」按鈕 | playground sub-header,把 auto 詞固化進 source |
 | 摺疊歷史 | `type:history` 或 `visibility:collapsed` |
 | Code copy 按鈕 | 每個程式碼區塊 |
 | Block metadata footer | tags / superseded-by / related / source 等 |
@@ -258,9 +333,14 @@ python mcp-server/mdp_mcp_server.py                       # 當 MCP stdio server
 
 PRs welcome。重點改動方向:
 - 新增 `type:` 種類 → 同步更新 viewer 投影規則 + `docs/03-metadata-vocabulary.md`
-- 改 viewer 行為 → 在 `public/lib/mdp-viewer.mjs`(browser)與 `cli/python/viewer.py`(CLI)同步維護
+- 改 viewer 行為 → 在 `public/lib/mdp-viewer.mjs`(browser)與 `cli/python/viewer.py`(CLI)同步維護;`public/playground.html` 自包含一份 inline 副本,行為要對齊
 - 改 validator 規則 → 在 `public/lib/mdp-validator.mjs` 與 `cli/python/validator.py` 同步
 - 改 block-query 邏輯 → 在 `cli/python/query.py` 與 `cli/node/query.mjs` 同步;`server.py` 的 `/api/mdp/*` 直接複用 `query.py`
+- 改 skill 內容 → 編輯 `skills/markdown-plus-author/`(canonical source),從這裡重打 `markdown-plus-author.skill` zip:
+  ```bash
+  cd skills && python -c "import zipfile, os; src='markdown-plus-author'; out='../markdown-plus-author.skill';\
+  zf=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [zf.write(os.path.join(r,f), os.path.join(r,f).replace(os.sep,'/')) for r,_,fs in os.walk(src) for f in fs]; zf.close()"
+  ```
 
 ## License
 
