@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -72,6 +73,69 @@ def build_prompt(kind: str, content: str) -> str:
     tmpl = PROMPTS[kind].read_text(encoding="utf-8")
     placeholder = "{{markdown_doc}}" if kind == "markdown" else "{{html_doc}}"
     return tmpl.replace(placeholder, content)
+
+
+# Pre-clean rules:
+#   - HTML: strip <script>/<style> blocks (token waste + defense) and on*= event
+#     handlers (the prompt asks the LLM to do this, but doing it server-side
+#     before the LLM sees the content is cheaper and removes one failure mode).
+#   - Markdown: no pre-clean — markdown rarely carries executable content; if
+#     the user pastes HTML-inside-markdown, the same rules apply on the way
+#     out of the LLM anyway.
+_HTML_SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script\s*>", re.DOTALL | re.IGNORECASE)
+_HTML_STYLE_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.DOTALL | re.IGNORECASE)
+_HTML_ON_HANDLER_RE = re.compile(r"""\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*')""", re.IGNORECASE)
+
+
+def pre_clean(kind: str, content: str) -> tuple[str, dict]:
+    """Return (cleaned_content, stats). stats is included in the start event."""
+    stats: dict[str, int] = {}
+    if kind == "html":
+        new, n = _HTML_SCRIPT_RE.subn("", content)
+        if n:
+            stats["stripped_script_blocks"] = n
+            content = new
+        new, n = _HTML_STYLE_RE.subn("", content)
+        if n:
+            stats["stripped_style_blocks"] = n
+            content = new
+        new, n = _HTML_ON_HANDLER_RE.subn("", content)
+        if n:
+            stats["stripped_event_handlers"] = n
+            content = new
+    return content, stats
+
+
+# Post-clean: strip a single leading ```{lang}? ... ``` wrapper if the LLM
+# violated "do not wrap output in a code fence". Idempotent and conservative:
+# only strips when both ends look like a wrapper around the whole output.
+_LEADING_FENCE_RE = re.compile(r"^\s*```[a-zA-Z+\-]*\s*\n")
+_TRAILING_FENCE_RE = re.compile(r"\n```\s*$")
+
+
+def post_clean(text: str) -> tuple[str, bool]:
+    """Return (cleaned, was_wrapped)."""
+    stripped_text = text
+    if _LEADING_FENCE_RE.search(text) and _TRAILING_FENCE_RE.search(text):
+        stripped_text = _LEADING_FENCE_RE.sub("", text, count=1)
+        stripped_text = _TRAILING_FENCE_RE.sub("", stripped_text, count=1)
+        return stripped_text, True
+    return text, False
+
+
+# Lazy: only imported when /api/rewrite is hit (keeps cold-start cheap).
+_mdp_validator = None
+
+
+def _load_validator():
+    global _mdp_validator
+    if _mdp_validator is None:
+        try:
+            import validator as v  # type: ignore
+            _mdp_validator = v
+        except Exception:  # noqa: BLE001
+            _mdp_validator = False  # mark as failed so we don't retry
+    return _mdp_validator or None
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -218,9 +282,13 @@ class Handler(SimpleHTTPRequestHandler):
                 "error": "openai package is not installed. Run `pip install -r requirements.txt` and restart."
             })
 
+        # ---- Pre-clean (server-side, before LLM) ----
+        content, pre_stats = pre_clean(kind, content)
+
         prompt = build_prompt(kind, content)
         client = OpenAI()
         headers_sent = False
+        accumulated: list[str] = []  # for post-clean + validation
 
         def write_ndjson(obj: dict) -> None:
             line = json.dumps(obj, ensure_ascii=False) + "\n"
@@ -247,18 +315,56 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 headers_sent = True
 
-                write_ndjson({"type": "start", "model": MODEL})
+                start_msg: dict = {"type": "start", "model": MODEL}
+                if pre_stats:
+                    start_msg["pre_clean"] = pre_stats
+                write_ndjson(start_msg)
 
                 for event in stream:
                     etype = getattr(event, "type", "")
                     if etype == "response.output_text.delta":
                         delta = getattr(event, "delta", "") or ""
                         if delta:
+                            accumulated.append(delta)
                             write_ndjson({"type": "delta", "delta": delta})
 
                 final = stream.get_final_response()
                 output_tokens = int(getattr(final.usage, "output_tokens", 0) or 0)
-                write_ndjson({"type": "done", "model": MODEL, "output_tokens": output_tokens})
+
+                # ---- Post-clean: detect fence wrapper (the LLM occasionally violates
+                # "don't wrap output in code fence"). We do NOT mutate what the client
+                # already received via streaming — just tell the client to strip it.
+                full_text = "".join(accumulated)
+                _, was_wrapped = post_clean(full_text)
+
+                # ---- Validation: run validator on output and include summary so the
+                # client can show a server-confirmed lint result alongside its own.
+                lint_summary: dict | None = None
+                v = _load_validator()
+                if v is not None:
+                    try:
+                        cleaned_for_lint, _ = post_clean(full_text)
+                        _, issues = v.validate(cleaned_for_lint)
+                        errs = [i for i in issues if i.severity == "error"]
+                        warns = [i for i in issues if i.severity == "warning"]
+                        lint_summary = {
+                            "errors": len(errs),
+                            "warnings": len(warns),
+                            # First few error codes so client can hint at what's wrong
+                            "sample_codes": list({i.code for i in errs[:5]}) or None,
+                        }
+                    except Exception:  # noqa: BLE001
+                        lint_summary = {"error": "validator failed"}
+
+                done_msg: dict = {
+                    "type": "done",
+                    "model": MODEL,
+                    "output_tokens": output_tokens,
+                    "wrapped_in_fence": was_wrapped,  # client should strip if true
+                }
+                if lint_summary is not None:
+                    done_msg["lint"] = lint_summary
+                write_ndjson(done_msg)
 
         except Exception as e:  # noqa: BLE001
             err = {"type": "error", "error": f"{type(e).__name__}: {e}"}

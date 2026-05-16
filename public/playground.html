@@ -4308,7 +4308,15 @@ HTML:
           } else if (msg.type === "error") {
             streamError = msg.error;
           } else if (msg.type === "start") {
-            rwStatus.textContent = `LLM 開始輸出… (${msg.model})`;
+            const ps = msg.pre_clean;
+            const cleanedNote = ps
+              ? ` · server stripped ${[
+                  ps.stripped_script_blocks ? `${ps.stripped_script_blocks} <script>` : null,
+                  ps.stripped_style_blocks ? `${ps.stripped_style_blocks} <style>` : null,
+                  ps.stripped_event_handlers ? `${ps.stripped_event_handlers} on*=` : null,
+                ].filter(Boolean).join(", ")}`
+              : "";
+            rwStatus.textContent = `LLM 開始輸出… (${msg.model})${cleanedNote}`;
           }
         }
       }
@@ -4318,7 +4326,20 @@ HTML:
         rwStatus.textContent = `串流中斷:${streamError}`;
         rwStatus.style.color = "var(--err)";
       } else if (meta) {
-        rwStatus.textContent = `完成 · ${elapsed}s · ${meta.model || ""} · ${meta.output_tokens || 0} tokens`;
+        // Server tells us if LLM wrapped the whole output in a ```...``` fence.
+        // We strip it here so the editor / push receives clean Markdown+.
+        if (meta.wrapped_in_fence) {
+          rwOut.value = rwOut.value
+            .replace(/^\s*```[a-zA-Z+\-]*\s*\n/, "")
+            .replace(/\n```\s*$/, "");
+        }
+        const lintNote = meta.lint
+          ? ` · lint: ${meta.lint.errors || 0} err / ${meta.lint.warnings || 0} warn`
+            + (meta.lint.sample_codes && meta.lint.sample_codes.length ? ` (${meta.lint.sample_codes.join(", ")})` : "")
+          : "";
+        const wrapNote = meta.wrapped_in_fence ? " · stripped fence wrapper" : "";
+        rwStatus.textContent = `完成 · ${elapsed}s · ${meta.model || ""} · ${meta.output_tokens || 0} tokens${lintNote}${wrapNote}`;
+        if (meta.lint && meta.lint.errors > 0) rwStatus.style.color = "var(--err)";
       } else {
         rwStatus.textContent = `完成 · ${elapsed}s · (無 metadata)`;
       }
