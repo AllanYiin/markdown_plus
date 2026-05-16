@@ -24,7 +24,9 @@
 
 【HTML 危險訊號(必須處理)】
 - `<img src="data:...;base64,...">` → **停止**,提示需要外部檔案路徑
-- inline `<svg>` → **停止**,提示需要外部 .svg 檔
+- inline `<svg>` 處理規則:
+  - **≤ 16 KB**:把整段 `<svg>...</svg>` 包進 ` ```svg ` fence,內容逐字保留(viewer 會 sanitize 並渲染);移除 `<script>` 與 `on*=` event handler attribute
+  - **> 16 KB**:停止改寫,要求改成外部 `![alt](./diagrams/<name>.svg)` 檔案參照
 - 巨型 JS chart config (Highcharts/Chart.js/plotly) → 拆到 `./charts/<name>.json`,inline 改成 `chart-type:` 引用
 
 【KPI / Dashboard HTML 對照】
@@ -51,13 +53,17 @@ HTML:
 【改寫要求】
 - 保留原文事實。
 - 直接輸出 Markdown+ 文件,不要前言、不要說明、不要包 code fence。
+- **不要手寫 `keywords:` metadata**:viewer 會自動從 block 內容用 N-gram + PMI + 左右熵抽取關鍵詞,結構標籤(`svg` / `mermaid` / 圖表類型)也由 viewer 自動加。手寫只在原 HTML 已明確標示 keyword/tag 或語義需精確控制時做。
 
 【絕對不可改動的內容 — verbatim preservation】
 HTML 內含下列任一形式時,在 Markdown+ 輸出中必須**逐字保留**、**不可改寫成散文、不可合併成一行**:
 
 1. **`<pre>` / `<pre><code>` 區塊**:轉為 ``` … ``` Markdown fence;內容每一行、每個對齊空白、每個換行,全部 1:1 複製;若 `<pre>` 是 ASCII 樹、目錄結構、aligned table 等預排內容,絕不可拆解或合併
 2. **含 box-drawing 字元 (`│ ├ └ ─` 等) 的純文字段**:放進 ``` fence 保留,不可當散文段
-3. **`<svg>` inline**:停止,改要求外部 `.svg` 檔案路徑;不可在 source 內展開 SVG XML
+3. **`<svg>` inline**:依大小決定
+   - **≤ 16 KB**:整段 SVG markup 放進 ` ```svg ` fence 內,**逐字保留**(每行、每個空白都保留),viewer 會自動 sanitize `<script>` 與 `on*=` event handler
+   - **> 16 KB**:停止改寫,要求外部 `.svg` 檔案路徑;不在 source 內展開
+4. **Mermaid / vega-lite / plotly 等其他 DSL fence**:同上,fence 與內容逐字保留
 
 正確範例:HTML 的 `<pre>hippoium/\n├── README.md\n...</pre>` → Markdown+ 內以 ``` fence 完整保留樹結構。
 

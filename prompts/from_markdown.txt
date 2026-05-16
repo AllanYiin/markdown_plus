@@ -23,7 +23,8 @@
 3. 不可使用:
    - `:::` fence directive
    - raw HTML (除 `<br>` `<hr>` `<sub>` `<sup>`)
-   - inline base64 / data URI / inline SVG
+   - inline base64 / data URI
+   - raw `<svg>` 直接寫在段落或 HTML 容器內(請改用 ` ```svg ` fence 內聯,≤ 16 KB;或外部檔 `![alt](./diagrams/<name>.svg)`,> 16 KB)
    - 寫死的 caption 編號 (`Figure 1:` `Table 2:` 等,只寫 `*Figure: ...*`)
 
 4. `type:` 受控字彙表(必須從此選):
@@ -54,6 +55,8 @@
 
 10. metadata 寫成 inline code,順序建議:identity → lifecycle → visibility → taxonomy → type-specific。
 
+11. **不要手寫 `keywords:` metadata**:viewer 會用無辭典演算法(N-gram + PMI + 左右熵)自動從 block 內容抽取關鍵詞並顯示;結構標籤(`svg` / `mermaid` / 圖表類型如 `sequenceDiagram` / `flowchart`)由 viewer 自動注入。**只有當原文已經明確使用 `keywords:` 或語義需要精確控制(下游 agent 依 keyword 查詢)時才手寫**,否則留空讓 viewer 跑。
+
 【改寫要求】
 - 保留原文事實,不增刪資訊。
 - 直接輸出 Markdown+ 文件,不要前言、不要說明、不要包進 code fence。
@@ -64,7 +67,7 @@
 1. **Code fence (``` … ``` 或 ~~~ … ~~~)**:fence 標記、language 標籤、內容每一行、每個空白與換行,全部 1:1 複製;不可省略 fence、不可改 language、不可重排內容
 2. **ASCII 樹狀結構 / 目錄結構**(含 `│ ├ └ ─` 等 box-drawing 字元):一律放在一個 ``` fence 內;每一行獨立、每個對齊空白完整保留;**絕不可把多行樹合併成一個段落**
 3. **ASCII art / 對齊表格 / 預先排版的文字**:同上,放在 fence 內保留
-4. **Mermaid / vega-lite / plotly 等 DSL fence**:fence 與內容逐字保留,只能在 metadata 加 `chart-type:` / `diagram-type:` 註明類型
+4. **Mermaid / SVG / vega-lite / plotly 等 DSL fence**:fence 與內容逐字保留,只能在 metadata 加 `chart-type:` / `diagram-type:` 註明類型。其中 ` ```svg ` 與 ` ```mermaid ` viewer 會自動 render 為 graph + 提供 code 切換,不需做額外處理
 
 正確範例:
 ```
