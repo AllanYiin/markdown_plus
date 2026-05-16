@@ -3361,18 +3361,36 @@ function renderDocument(text, opts = {}) {
     }
   }
 
-  // Sidebar TOC lists only top-level blocks. Nested children are NOT here — when a
-  // parent has ≥3 non-variant children, renderBlock emits a `mdp-toc-inline` nav
-  // inside that parent block instead.
+  // Sidebar TOC shows the full block tree (parent + children recursively) as a
+  // nested <ol>. variant-group siblings dedupe to a single entry. This is a parallel
+  // surface to renderBlock's `mdp-toc-inline` (which still appears inside any parent
+  // with ≥3 non-variant children) — together they give both global tree view +
+  // local-context nav.
+  function buildTocItem(b) {
+    const title = b.metadata.title || b.id.replaceAll("-", " ");
+    const typeBadge = b.type ? ` <span class="mdp-toc-type">${esc(b.type)}</span>` : "";
+    let inner = `<a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}" title="${esc(b.id)}">${esc(title)}${typeBadge}</a>`;
+    if (b.children && b.children.length) {
+      const seenVg = new Set();
+      const childItems = [];
+      for (const cid of b.children) {
+        const cb = byId.get(cid);
+        if (!cb) continue;
+        const cvg = cb.metadata["variant-group"];
+        if (cvg) { if (seenVg.has(cvg)) continue; seenVg.add(cvg); }
+        childItems.push(buildTocItem(cb));
+      }
+      if (childItems.length) inner += `<ol>${childItems.join("")}</ol>`;
+    }
+    return `<li>${inner}</li>`;
+  }
   const tocSeen = new Set();
   const tocItems = top.flatMap(b => {
     const vg = b.metadata["variant-group"];
     if (vg) { if (tocSeen.has(vg)) return []; tocSeen.add(vg); }
-    const title = b.metadata.title || b.id.replaceAll("-", " ");
-    const typeBadge = b.type ? ` <span class="mdp-toc-type">${esc(b.type)}</span>` : "";
-    return `<li><a href="#${esc(b.id)}" data-toc-target="${esc(b.id)}" title="${esc(b.id)}">${esc(title)}${typeBadge}</a></li>`;
+    return buildTocItem(b);
   }).join("");
-  const sidebar = top.length >= 3
+  const sidebar = blocks.length >= 2
     ? `<aside class="mdp-sidebar" aria-label="文件目錄"><div class="mdp-sidebar-title">目錄</div><ol class="mdp-toc">${tocItems}</ol></aside>`
     : "";
 
