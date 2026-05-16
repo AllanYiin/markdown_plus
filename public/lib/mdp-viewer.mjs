@@ -12,6 +12,252 @@ const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
 const CODE_FENCE_RE = /^(\s*)(```|~~~)(\w*)\s*$/;
 const GFM_ALERT_RE = /^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/;
 const BLOCK_HEADER_PATTERN = /^\s*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/;
+const SVG_INLINE_LIMIT_BYTES = 16 * 1024;
+const KEYWORD_SENTENCE_SPLIT_RE = /[\s　，。!?！？；：、,.;:()\[\]【】「」『』""''《》<>\/\\\n\r\t]+/;
+
+function isCJK(ch) {
+  if (!ch) return false;
+  const c = ch.codePointAt(0);
+  return (c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3400 && c <= 0x4dbf) || (c >= 0xf900 && c <= 0xfaff);
+}
+
+function entropyOfMap(map) {
+  let total = 0;
+  for (const v of map.values()) total += v;
+  if (total === 0) return 0;
+  let ent = 0;
+  for (const v of map.values()) {
+    const p = v / total;
+    ent -= p * Math.log(p);
+  }
+  return ent;
+}
+
+// Dictionary-free keyword extractor — N-gram (CJK 2–8) + ASCII tokens, scored by
+// PMI cohesion × min(left, right) Shannon entropy. Based on "無詞典新詞發現" method.
+export class KeywordExtractor {
+  constructor(opts) {
+    opts = opts || {};
+    this.minLen = opts.minLen != null ? opts.minLen : 2;
+    this.maxLen = opts.maxLen != null ? opts.maxLen : 8;
+    this.minFreq = opts.minFreq != null ? opts.minFreq : 2;
+    this.minPmi = opts.minPmi != null ? opts.minPmi : 1.0;
+    this.minEntropy = opts.minEntropy != null ? opts.minEntropy : 0.4;
+    this.minAsciiLen = opts.minAsciiLen != null ? opts.minAsciiLen : 3;
+    this.ngramFreq = new Map();
+    this.leftNeighbors = new Map();
+    this.rightNeighbors = new Map();
+    this.totalChars = 0;
+  }
+  _inc(k) { this.ngramFreq.set(k, (this.ngramFreq.get(k) || 0) + 1); }
+  _addNeighbor(cand, left, right) {
+    let lm = this.leftNeighbors.get(cand);
+    if (!lm) { lm = new Map(); this.leftNeighbors.set(cand, lm); }
+    let rm = this.rightNeighbors.get(cand);
+    if (!rm) { rm = new Map(); this.rightNeighbors.set(cand, rm); }
+    lm.set(left, (lm.get(left) || 0) + 1);
+    rm.set(right, (rm.get(right) || 0) + 1);
+  }
+  static cleanText(text) {
+    return String(text)
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/~~~[\s\S]*?~~~/g, " ")
+      .replace(/`[^`]*`/g, " ")
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+      .replace(/\[[^\]]+\]\([^)]+\)/g, " ")
+      .replace(/^\s*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*.*$/gm, " ")
+      .replace(/^\s*#{1,6}\s+/gm, " ")
+      .replace(/[*_>|]+/g, " ");
+  }
+  fit(text) {
+    const cleaned = KeywordExtractor.cleanText(text);
+    const sentences = cleaned.split(KEYWORD_SENTENCE_SPLIT_RE).filter(s => s.length >= 2);
+    for (const sent of sentences) this._scanSentence(sent);
+    return this;
+  }
+  _scanSentence(sent) {
+    const arr = Array.from(sent);
+    const n = arr.length;
+    for (let i = 0; i < n; i++) {
+      if (isCJK(arr[i])) this._inc(arr[i]);
+      this.totalChars++;
+    }
+    for (let i = 0; i < n; i++) {
+      if (!isCJK(arr[i])) continue;
+      for (let L = this.minLen; L <= this.maxLen && i + L <= n; L++) {
+        let ok = true;
+        for (let k = 0; k < L; k++) {
+          if (!isCJK(arr[i + k])) { ok = false; break; }
+        }
+        if (!ok) break;
+        const cand = arr.slice(i, i + L).join("");
+        this._inc(cand);
+        const left = i > 0 ? arr[i - 1] : "<BOS>";
+        const right = i + L < n ? arr[i + L] : "<EOS>";
+        this._addNeighbor(cand, left, right);
+      }
+    }
+    const tokenRe = /[A-Za-z][A-Za-z0-9+\-]*/g;
+    let m;
+    while ((m = tokenRe.exec(sent)) !== null) {
+      const tok = m[0];
+      if (tok.length < this.minAsciiLen) continue;
+      this._inc(tok);
+      const startIdx = m.index;
+      const endIdx = m.index + tok.length;
+      const left = startIdx > 0 ? sent[startIdx - 1] : "<BOS>";
+      const right = endIdx < sent.length ? sent[endIdx] : "<EOS>";
+      this._addNeighbor(tok, left, right);
+    }
+  }
+  _prob(token) { return (this.ngramFreq.get(token) || 0) / Math.max(this.totalChars, 1); }
+  cohesion(word) {
+    if (/^[A-Za-z][A-Za-z0-9+\-]*$/.test(word)) {
+      return Math.log((this.ngramFreq.get(word) || 1)) + 1;
+    }
+    const arr = Array.from(word);
+    if (arr.length < 2) return 0;
+    const pWord = this._prob(word);
+    if (pWord <= 0) return 0;
+    let minPmi = Infinity;
+    for (let i = 1; i < arr.length; i++) {
+      const left = arr.slice(0, i).join("");
+      const right = arr.slice(i).join("");
+      const pl = this._prob(left);
+      const pr = this._prob(right);
+      if (pl <= 0 || pr <= 0) return 0;
+      const pmi = Math.log(pWord / (pl * pr));
+      if (pmi < minPmi) minPmi = pmi;
+    }
+    return minPmi === Infinity ? 0 : minPmi;
+  }
+  discover(opts) {
+    opts = opts || {};
+    const topK = opts.topK != null ? opts.topK : 80;
+    const results = [];
+    for (const [word, freq] of this.ngramFreq) {
+      if (freq < this.minFreq) continue;
+      const isAscii = /^[A-Za-z][A-Za-z0-9+\-]*$/.test(word);
+      if (!isAscii) {
+        const arr = Array.from(word);
+        if (arr.length < this.minLen || arr.length > this.maxLen) continue;
+      } else if (word.length < this.minAsciiLen) continue;
+      const coh = this.cohesion(word);
+      if (coh < this.minPmi) continue;
+      const leftEnt = entropyOfMap(this.leftNeighbors.get(word) || new Map());
+      const rightEnt = entropyOfMap(this.rightNeighbors.get(word) || new Map());
+      if (leftEnt < this.minEntropy || rightEnt < this.minEntropy) continue;
+      const score = freq * coh * Math.min(leftEnt, rightEnt);
+      results.push({ word, freq, cohesion: coh, leftEntropy: leftEnt, rightEntropy: rightEnt, score });
+    }
+    results.sort((a, b) => b.score - a.score);
+    const kept = [];
+    for (const r of results) {
+      let suppress = false;
+      for (let k = 0; k < kept.length; k++) {
+        const o = kept[k];
+        if (o.word === r.word) continue;
+        if (o.word.includes(r.word) && o.freq >= r.freq * 0.6) { suppress = true; break; }
+        if (r.word.includes(o.word) && r.freq >= o.freq * 0.6 && r.word.length > o.word.length) {
+          kept.splice(k, 1); k--;
+        }
+      }
+      if (!suppress) kept.push(r);
+      if (kept.length >= topK) break;
+    }
+    return kept;
+  }
+  keywordsForBlock(blockText, candidates, topN) {
+    topN = topN || 5;
+    const cleaned = KeywordExtractor.cleanText(blockText);
+    const hits = [];
+    for (const c of candidates) {
+      let cnt = 0;
+      let idx = 0;
+      while ((idx = cleaned.indexOf(c.word, idx)) !== -1) { cnt++; idx += c.word.length; }
+      if (cnt > 0) hits.push({ word: c.word, occurrences: cnt, score: c.score * Math.log(cnt + 1) });
+    }
+    hits.sort((a, b) => b.score - a.score);
+    const out = [];
+    for (const h of hits) {
+      let skip = false;
+      for (const o of out) {
+        if (o.word.includes(h.word) || h.word.includes(o.word)) { skip = true; break; }
+      }
+      if (!skip) out.push(h);
+      if (out.length >= topN) break;
+    }
+    return out.map(h => h.word);
+  }
+}
+
+function detectStructuralTags(bodyText) {
+  const tags = [];
+  const mermaidRe = /^[ \t]*```[ \t]*mermaid\b[ \t]*\r?\n([\s\S]*?)^[ \t]*```/gm;
+  let mm;
+  while ((mm = mermaidRe.exec(bodyText)) !== null) {
+    if (!tags.includes("mermaid")) tags.push("mermaid");
+    for (const rawLine of mm[1].split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (line.startsWith("%%") || line.startsWith("---")) continue;
+      const idM = line.match(/^([A-Za-z][A-Za-z0-9-]*)/);
+      if (idM) {
+        const dt = idM[1];
+        if (dt !== "title" && !tags.includes(dt)) tags.push(dt);
+      }
+      break;
+    }
+  }
+  if (/^[ \t]*```[ \t]*svg\b/m.test(bodyText) && !tags.includes("svg")) tags.push("svg");
+  return tags;
+}
+
+function renderMermaidToggle(codeText) {
+  const codeHtml = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code class="language-mermaid">${esc(codeText)}</code></pre>`;
+  const imgHtml = `<pre class="mermaid">${esc(codeText)}</pre>`;
+  return `<div class="mdp-diagram-toggle" data-diagram="mermaid">`
+    + `<div class="mdp-diagram-toolbar">`
+    + `<span class="mdp-diagram-kind">mermaid</span>`
+    + `<button type="button" class="mdp-diagram-btn mdp-diagram-btn-active" data-view="image">graph</button>`
+    + `<button type="button" class="mdp-diagram-btn" data-view="code">code</button>`
+    + `</div>`
+    + `<div class="mdp-diagram-views">`
+    + `<div class="mdp-diagram-view mdp-diagram-view-image mdp-diagram-view-active" data-view="image">${imgHtml}</div>`
+    + `<div class="mdp-diagram-view mdp-diagram-view-code" data-view="code">${codeHtml}</div>`
+    + `</div></div>`;
+}
+
+function renderSvgToggle(codeText) {
+  const byteLen = (typeof TextEncoder !== "undefined") ? new TextEncoder().encode(codeText).length : codeText.length;
+  const kb = (byteLen / 1024).toFixed(1);
+  const codeHtml = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code class="language-svg">${esc(codeText)}</code></pre>`;
+  if (byteLen > SVG_INLINE_LIMIT_BYTES) {
+    return `<div class="mdp-diagram-toggle mdp-diagram-toolarge" data-diagram="svg">`
+      + `<div class="mdp-diagram-toolbar"><span class="mdp-diagram-kind">svg · ${kb} KB · too large</span></div>`
+      + `<div class="mdp-diagram-views">`
+      + `<aside class="mdp-callout mdp-callout-warning"><div class="mdp-callout-label">SVG 過大</div><div class="mdp-callout-body">SVG 內容 ${kb} KB,超過 16 KB 內聯閾值。建議拆成外部 <code>.svg</code> 檔,改用 <code>![alt](./diagram.svg)</code> 引用。</div></aside>`
+      + codeHtml
+      + `</div></div>`;
+  }
+  let safeSvg = codeText
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+  if (!/<svg[\s>]/i.test(safeSvg)) {
+    safeSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><text x="10" y="38" font-size="14" fill="#94a3b8">無效的 SVG 內容</text></svg>`;
+  }
+  return `<div class="mdp-diagram-toggle" data-diagram="svg">`
+    + `<div class="mdp-diagram-toolbar">`
+    + `<span class="mdp-diagram-kind">svg · ${kb} KB</span>`
+    + `<button type="button" class="mdp-diagram-btn mdp-diagram-btn-active" data-view="image">graph</button>`
+    + `<button type="button" class="mdp-diagram-btn" data-view="code">code</button>`
+    + `</div>`
+    + `<div class="mdp-diagram-views">`
+    + `<div class="mdp-diagram-view mdp-diagram-view-image mdp-diagram-view-active" data-view="image"><div class="mdp-svg-host">${safeSvg}</div></div>`
+    + `<div class="mdp-diagram-view mdp-diagram-view-code" data-view="code">${codeHtml}</div>`
+    + `</div></div>`;
+}
 
 function inlineMd(s) {
   let out = esc(s);
@@ -104,8 +350,11 @@ function renderBody(bodyLines, indent, blockType, captionCounters) {
       while (j < norm.length && !CODE_FENCE_RE.test(norm[j])) { codeLines.push(norm[j]); j++; }
       const codeText = codeLines.join("\n");
       let inner;
-      if (lang.toLowerCase() === "mermaid") {
-        inner = `<pre class="mermaid">${esc(codeText)}</pre>`;
+      const langLower = lang.toLowerCase();
+      if (langLower === "mermaid") {
+        inner = renderMermaidToggle(codeText);
+      } else if (langLower === "svg") {
+        inner = renderSvgToggle(codeText);
       } else {
         const cls = lang ? ` class="language-${esc(lang)}"` : "";
         inner = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code${cls}>${esc(codeText)}</code></pre>`;
@@ -241,15 +490,32 @@ function renderGauge(b) {
     + ` <span class="mdp-gauge-target-text">/ target ${t}${unit}</span></div></div>`;
 }
 
+function parseListMeta(s) {
+  if (!s) return [];
+  return s.replace(/^\[|\]$/g, "").split(",").map(x => x.trim()).filter(Boolean);
+}
+
 function renderBlockHeader(b, depth) {
   const title = b.metadata.title || b.id.replaceAll("-", " ");
   const status = b.metadata.status || "";
   const pill = status ? ` <span class="mdp-pill mdp-pill-status-${status}">${esc(status)}</span>` : "";
   const upd = b.metadata.updated ? ` <time class="mdp-updated">${esc(b.metadata.updated)}</time>` : "";
   const level = Math.min(2 + depth, 6);
+
+  const userKws = parseListMeta(b.metadata.keywords);
+  const autoKws = b._autoKeywords || [];
+  const showKws = userKws.length ? userKws : autoKws;
+  const kwSource = userKws.length ? "user" : "auto";
+  const kwRow = showKws.length
+    ? `<div class="mdp-keywords-row" data-source="${kwSource}">`
+      + `<span class="mdp-keywords-label">${kwSource === "auto" ? "auto keywords" : "keywords"}</span>`
+      + showKws.map(k => `<span class="mdp-keyword-chip" data-source="${kwSource}">${esc(k)}</span>`).join("")
+      + `</div>`
+    : "";
+
   return `<header class="mdp-block-header"><h${level} class="mdp-block-title">`
     + `<a class="mdp-anchor" href="#${esc(b.id)}">#</a>${esc(title)}${pill}${upd}`
-    + `<span class="mdp-type-badge">${esc(b.type)}</span></h${level}></header>`;
+    + `<span class="mdp-type-badge">${esc(b.type)}</span></h${level}>${kwRow}</header>`;
 }
 
 function renderBlock(b, byId, depth, captionCounters) {
@@ -325,6 +591,26 @@ export function renderDocument(text, opts = {}) {
   const byId = new Map(blocks.map(b => [b.id, b]));
   const top = blocks.filter(b => !b.parent);
   const lines = text.split(/\r?\n/);
+
+  // Dictionary-free auto-keyword enrichment. Skips blocks that already declare `keywords:`.
+  if (opts.autoKeywords !== false && blocks.length > 0) {
+    try {
+      const extractor = new KeywordExtractor({
+        minLen: 2, maxLen: 8, minFreq: 2, minPmi: 1.0, minEntropy: 0.4,
+      });
+      extractor.fit(text);
+      const candidates = extractor.discover({ topK: 80 });
+      const perBlock = opts.keywordsPerBlock || 5;
+      for (const b of blocks) {
+        if (b.metadata.keywords) continue;
+        const bodyText = b.bodyLines.join("\n");
+        const structural = detectStructuralTags(bodyText);
+        const kws = extractor.keywordsForBlock(bodyText, candidates, perBlock);
+        const merged = [...structural, ...kws.filter(k => !structural.includes(k))];
+        if (merged.length) b._autoKeywords = merged;
+      }
+    } catch (e) { /* swallow — extraction is best-effort */ }
+  }
   const h1Idx = lines.findIndex(l => l.startsWith("# "));
   const title = h1Idx >= 0 ? lines[h1Idx].slice(2).trim() : (opts.title || "Markdown+ Document");
   let intro = "";

@@ -492,6 +492,101 @@ code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
 }
 .mdp-fig img { max-width: 100%; height: auto; border-radius: 6px; }
 
+/* ---------- Diagram toggle (mermaid / svg, code <-> image) ---------- */
+.mdp-diagram-toggle {
+  position: relative;
+  border: 1px solid var(--mdp-border);
+  border-radius: 10px;
+  margin: 12px 0;
+  background: var(--mdp-surface);
+  overflow: hidden;
+}
+.mdp-diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--mdp-bg);
+  border-bottom: 1px solid var(--mdp-border);
+  font-size: 12px;
+}
+.mdp-diagram-kind {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  color: var(--mdp-muted);
+  margin-right: auto;
+}
+.mdp-diagram-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--mdp-muted);
+}
+.mdp-diagram-btn:hover { background: var(--mdp-surface); color: var(--mdp-text); }
+.mdp-diagram-btn.mdp-diagram-btn-active {
+  background: var(--mdp-surface);
+  border-color: var(--mdp-border);
+  color: var(--mdp-accent);
+  font-weight: 600;
+}
+.mdp-diagram-views { padding: 12px; background: var(--mdp-surface); }
+.mdp-diagram-view { display: none; }
+.mdp-diagram-view.mdp-diagram-view-active { display: block; }
+.mdp-diagram-view-image { text-align: center; }
+.mdp-diagram-view-image svg { max-width: 100%; height: auto; }
+.mdp-diagram-view-code pre { margin: 0; max-height: 480px; overflow: auto; }
+.mdp-diagram-toolarge .mdp-diagram-views { padding: 0; }
+.mdp-diagram-toolarge .mdp-callout { margin: 12px; }
+.mdp-diagram-toolarge .mdp-code { margin: 0 12px 12px; }
+.mdp-svg-host { display: inline-block; max-width: 100%; }
+.mdp-diagram-view-image pre.mermaid {
+  border: none;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------- Block-level auto keywords ---------- */
+.mdp-keywords-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin: 4px 0 0;
+  padding: 4px 0 0;
+}
+.mdp-keywords-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mdp-muted);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.mdp-keyword-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mdp-accent) 10%, transparent);
+  color: var(--mdp-accent);
+  border: 1px solid color-mix(in srgb, var(--mdp-accent) 25%, transparent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.mdp-keyword-chip[data-source="auto"] {
+  background: var(--mdp-bg);
+  color: var(--mdp-muted);
+  border-style: dashed;
+  border-color: var(--mdp-border-strong);
+}
+
 /* ---------- Misc ---------- */
 .mdp-body > * + * { margin-top: 12px; }
 .mdp-body p { margin: 12px 0; }

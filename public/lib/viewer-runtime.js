@@ -37,6 +37,19 @@
     });
   });
 
+  // ---- Diagram (mermaid / svg) code <-> image toggle ----
+  document.querySelectorAll(".mdp-diagram-toggle").forEach(function (d) {
+    var btns = d.querySelectorAll(".mdp-diagram-btn");
+    var views = d.querySelectorAll(".mdp-diagram-view");
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var target = btn.getAttribute("data-view");
+        btns.forEach(function (b) { b.classList.toggle("mdp-diagram-btn-active", b === btn); });
+        views.forEach(function (v) { v.classList.toggle("mdp-diagram-view-active", v.getAttribute("data-view") === target); });
+      });
+    });
+  });
+
   // ---- Scroll-spy TOC highlight ----
   var tocLinks = document.querySelectorAll(".mdp-toc a[data-toc-target]");
   if (tocLinks.length === 0) return;

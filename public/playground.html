@@ -1758,6 +1758,101 @@ pre.mermaid[data-mermaid-done] {
 }
 pre.mermaid svg { max-width: 100%; height: auto; }
 
+/* ---------- Diagram toggle (mermaid / svg, code <-> image) ---------- */
+.mdp-diagram-toggle {
+  position: relative;
+  border: 1px solid var(--mdp-border);
+  border-radius: 10px;
+  margin: 12px 0;
+  background: var(--mdp-surface);
+  overflow: hidden;
+}
+.mdp-diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--mdp-bg);
+  border-bottom: 1px solid var(--mdp-border);
+  font-size: 12px;
+}
+.mdp-diagram-kind {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  color: var(--mdp-muted);
+  margin-right: auto;
+}
+.mdp-diagram-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--mdp-muted);
+}
+.mdp-diagram-btn:hover { background: var(--mdp-surface); color: var(--mdp-text); }
+.mdp-diagram-btn.mdp-diagram-btn-active {
+  background: var(--mdp-surface);
+  border-color: var(--mdp-border);
+  color: var(--mdp-accent);
+  font-weight: 600;
+}
+.mdp-diagram-views { padding: 12px; background: var(--mdp-surface); }
+.mdp-diagram-view { display: none; }
+.mdp-diagram-view.mdp-diagram-view-active { display: block; }
+.mdp-diagram-view-image { text-align: center; }
+.mdp-diagram-view-image svg { max-width: 100%; height: auto; }
+.mdp-diagram-view-code pre { margin: 0; max-height: 480px; overflow: auto; }
+.mdp-diagram-toolarge .mdp-diagram-views { padding: 0; }
+.mdp-diagram-toolarge .mdp-callout { margin: 12px; }
+.mdp-diagram-toolarge .mdp-code { margin: 0 12px 12px; }
+.mdp-svg-host { display: inline-block; max-width: 100%; }
+.mdp-diagram-view-image pre.mermaid {
+  border: none;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------- Block-level auto keywords (PMI + entropy extraction) ---------- */
+.mdp-keywords-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin: 4px 0 0;
+  padding: 4px 0 0;
+}
+.mdp-keywords-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mdp-muted);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.mdp-keyword-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mdp-accent) 10%, transparent);
+  color: var(--mdp-accent);
+  border: 1px solid color-mix(in srgb, var(--mdp-accent) 25%, transparent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.mdp-keyword-chip[data-source="auto"] {
+  background: var(--mdp-bg);
+  color: var(--mdp-muted);
+  border-style: dashed;
+  border-color: var(--mdp-border-strong);
+}
+
 .mdp-trend { font-weight: 600; }
 .mdp-trend-up, .mdp-trend-up2 { color: #16a34a; }
 .mdp-trend-down, .mdp-trend-down2 { color: #dc2626; }
@@ -2035,6 +2130,13 @@ blockquote {
         <span>載入檔案</span>
       </button>
       <input type="file" id="file-input" accept=".md,.mdp,.markdown,.txt,text/markdown,text/plain" style="display:none">
+      <button type="button" class="pg-sample-picker" id="autofill-keywords" title="把 viewer 顯示的 auto keywords 寫進 source 的 block metadata(會修改 editor 內容)">
+        <svg class="picker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+          <line x1="7" y1="7" x2="7" y2="7"/>
+        </svg>
+        <span>寫入 keywords</span>
+      </button>
       <button type="button" class="pg-sample-picker" id="sample-reset" title="重新載入預設範例">
         <svg class="picker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="1 4 1 10 7 10"></polyline>
@@ -2451,6 +2553,281 @@ const CAPTION_RE = /^\s*\*([A-Z][a-zA-Z]+):\s+(.+?)\*\s*$/;
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
 const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
 const CODE_FENCE_RE = /^(\s*)(```|~~~)(\w*)\s*$/;
+const SVG_INLINE_LIMIT_BYTES = 16 * 1024;
+
+// ===== Dictionary-free keyword extraction =====
+// N-gram (CJK 2-8) + ASCII tokens + PMI cohesion + Left/Right entropy.
+// Implements the method from "無詞典新詞發現" (statistical, no jieba/HanLP needed).
+const KEYWORD_SENTENCE_SPLIT_RE = /[\s　，。!?！？；：、,.;:()\[\]【】「」『』""''《》<>\/\\\n\r\t]+/;
+
+function isCJK(ch) {
+  if (!ch) return false;
+  const c = ch.codePointAt(0);
+  return (c >= 0x4e00 && c <= 0x9fff)
+      || (c >= 0x3400 && c <= 0x4dbf)
+      || (c >= 0xf900 && c <= 0xfaff);
+}
+
+function entropyOfMap(map) {
+  let total = 0;
+  for (const v of map.values()) total += v;
+  if (total === 0) return 0;
+  let ent = 0;
+  for (const v of map.values()) {
+    const p = v / total;
+    ent -= p * Math.log(p);
+  }
+  return ent;
+}
+
+class KeywordExtractor {
+  constructor(opts) {
+    opts = opts || {};
+    this.minLen = opts.minLen != null ? opts.minLen : 2;
+    this.maxLen = opts.maxLen != null ? opts.maxLen : 8;
+    this.minFreq = opts.minFreq != null ? opts.minFreq : 2;
+    this.minPmi = opts.minPmi != null ? opts.minPmi : 1.0;
+    this.minEntropy = opts.minEntropy != null ? opts.minEntropy : 0.4;
+    this.minAsciiLen = opts.minAsciiLen != null ? opts.minAsciiLen : 3;
+    this.ngramFreq = new Map();
+    this.leftNeighbors = new Map();
+    this.rightNeighbors = new Map();
+    this.totalChars = 0;
+  }
+
+  _inc(k) { this.ngramFreq.set(k, (this.ngramFreq.get(k) || 0) + 1); }
+
+  _addNeighbor(cand, left, right) {
+    let lm = this.leftNeighbors.get(cand);
+    if (!lm) { lm = new Map(); this.leftNeighbors.set(cand, lm); }
+    let rm = this.rightNeighbors.get(cand);
+    if (!rm) { rm = new Map(); this.rightNeighbors.set(cand, rm); }
+    lm.set(left, (lm.get(left) || 0) + 1);
+    rm.set(right, (rm.get(right) || 0) + 1);
+  }
+
+  static cleanText(text) {
+    // Strip structural noise so only prose content reaches the n-gram counter.
+    return String(text)
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/~~~[\s\S]*?~~~/g, " ")
+      .replace(/`[^`]*`/g, " ")
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+      .replace(/\[[^\]]+\]\([^)]+\)/g, " ")
+      .replace(/^\s*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*.*$/gm, " ")
+      .replace(/^\s*#{1,6}\s+/gm, " ")
+      .replace(/[*_>|]+/g, " ");
+  }
+
+  fit(text) {
+    const cleaned = KeywordExtractor.cleanText(text);
+    const sentences = cleaned.split(KEYWORD_SENTENCE_SPLIT_RE).filter(s => s.length >= 2);
+    for (const sent of sentences) this._scanSentence(sent);
+    return this;
+  }
+
+  _scanSentence(sent) {
+    const arr = Array.from(sent);
+    const n = arr.length;
+    for (let i = 0; i < n; i++) {
+      if (isCJK(arr[i])) this._inc(arr[i]);
+      this.totalChars++;
+    }
+    for (let i = 0; i < n; i++) {
+      if (!isCJK(arr[i])) continue;
+      for (let L = this.minLen; L <= this.maxLen && i + L <= n; L++) {
+        let ok = true;
+        for (let k = 0; k < L; k++) {
+          if (!isCJK(arr[i + k])) { ok = false; break; }
+        }
+        if (!ok) break;
+        const cand = arr.slice(i, i + L).join("");
+        this._inc(cand);
+        const left = i > 0 ? arr[i - 1] : "<BOS>";
+        const right = i + L < n ? arr[i + L] : "<EOS>";
+        this._addNeighbor(cand, left, right);
+      }
+    }
+    // ASCII tokens (Markdown, HTML, Markdown+, block-based, etc.)
+    const tokenRe = /[A-Za-z][A-Za-z0-9+\-]*/g;
+    let m;
+    while ((m = tokenRe.exec(sent)) !== null) {
+      const tok = m[0];
+      if (tok.length < this.minAsciiLen) continue;
+      this._inc(tok);
+      const startIdx = m.index;
+      const endIdx = m.index + tok.length;
+      const left = startIdx > 0 ? sent[startIdx - 1] : "<BOS>";
+      const right = endIdx < sent.length ? sent[endIdx] : "<EOS>";
+      this._addNeighbor(tok, left, right);
+    }
+  }
+
+  _prob(token) {
+    return (this.ngramFreq.get(token) || 0) / Math.max(this.totalChars, 1);
+  }
+
+  cohesion(word) {
+    if (/^[A-Za-z][A-Za-z0-9+\-]*$/.test(word)) {
+      // ASCII token: PMI-by-split doesn't apply cleanly; use log-frequency as a synthetic cohesion.
+      return Math.log((this.ngramFreq.get(word) || 1)) + 1;
+    }
+    const arr = Array.from(word);
+    if (arr.length < 2) return 0;
+    const pWord = this._prob(word);
+    if (pWord <= 0) return 0;
+    let minPmi = Infinity;
+    for (let i = 1; i < arr.length; i++) {
+      const left = arr.slice(0, i).join("");
+      const right = arr.slice(i).join("");
+      const pl = this._prob(left);
+      const pr = this._prob(right);
+      if (pl <= 0 || pr <= 0) return 0;
+      const pmi = Math.log(pWord / (pl * pr));
+      if (pmi < minPmi) minPmi = pmi;
+    }
+    return minPmi === Infinity ? 0 : minPmi;
+  }
+
+  discover(opts) {
+    opts = opts || {};
+    const topK = opts.topK != null ? opts.topK : 80;
+    const results = [];
+    for (const [word, freq] of this.ngramFreq) {
+      if (freq < this.minFreq) continue;
+      const isAscii = /^[A-Za-z][A-Za-z0-9+\-]*$/.test(word);
+      if (!isAscii) {
+        const arr = Array.from(word);
+        if (arr.length < this.minLen || arr.length > this.maxLen) continue;
+      } else if (word.length < this.minAsciiLen) {
+        continue;
+      }
+      const coh = this.cohesion(word);
+      if (coh < this.minPmi) continue;
+      const leftEnt = entropyOfMap(this.leftNeighbors.get(word) || new Map());
+      const rightEnt = entropyOfMap(this.rightNeighbors.get(word) || new Map());
+      if (leftEnt < this.minEntropy || rightEnt < this.minEntropy) continue;
+      const score = freq * coh * Math.min(leftEnt, rightEnt);
+      results.push({ word, freq, cohesion: coh, leftEntropy: leftEnt, rightEntropy: rightEnt, score });
+    }
+    results.sort((a, b) => b.score - a.score);
+    // Substring suppression — prefer longer compounds when supported by freq.
+    const kept = [];
+    for (const r of results) {
+      let suppress = false;
+      for (let k = 0; k < kept.length; k++) {
+        const o = kept[k];
+        if (o.word === r.word) continue;
+        if (o.word.includes(r.word) && o.freq >= r.freq * 0.6) { suppress = true; break; }
+        if (r.word.includes(o.word) && r.freq >= o.freq * 0.6 && r.word.length > o.word.length) {
+          kept.splice(k, 1); k--;
+        }
+      }
+      if (!suppress) kept.push(r);
+      if (kept.length >= topK) break;
+    }
+    return kept;
+  }
+
+  // Score each candidate against a single block's text and return top-N words.
+  keywordsForBlock(blockText, candidates, topN) {
+    topN = topN || 5;
+    const cleaned = KeywordExtractor.cleanText(blockText);
+    const hits = [];
+    for (const c of candidates) {
+      let cnt = 0;
+      let idx = 0;
+      while ((idx = cleaned.indexOf(c.word, idx)) !== -1) { cnt++; idx += c.word.length; }
+      if (cnt > 0) hits.push({ word: c.word, occurrences: cnt, score: c.score * Math.log(cnt + 1) });
+    }
+    hits.sort((a, b) => b.score - a.score);
+    const out = [];
+    for (const h of hits) {
+      let skip = false;
+      for (const o of out) {
+        if (o.word.includes(h.word) || h.word.includes(o.word)) { skip = true; break; }
+      }
+      if (!skip) out.push(h);
+      if (out.length >= topN) break;
+    }
+    return out.map(h => h.word);
+  }
+}
+
+// Detect structural fence markers inside a block body. These tags are NOT discoverable
+// via KeywordExtractor because cleanText() strips fence content; we surface them so the
+// block is queryable by `keywords:svg` / `keywords:mermaid,flowchart` downstream.
+// For mermaid fences we also peek at the first content line to grab the diagram-type
+// keyword (sequenceDiagram / flowchart / classDiagram / gantt / pie / ...).
+function detectStructuralTags(bodyText) {
+  const tags = [];
+  const mermaidRe = /^[ \t]*```[ \t]*mermaid\b[ \t]*\r?\n([\s\S]*?)^[ \t]*```/gm;
+  let mm;
+  while ((mm = mermaidRe.exec(bodyText)) !== null) {
+    if (!tags.includes("mermaid")) tags.push("mermaid");
+    for (const rawLine of mm[1].split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (line.startsWith("%%") || line.startsWith("---")) continue;
+      const idM = line.match(/^([A-Za-z][A-Za-z0-9-]*)/);
+      if (idM) {
+        const dt = idM[1];
+        if (dt !== "title" && !tags.includes(dt)) tags.push(dt);
+      }
+      break;
+    }
+  }
+  if (/^[ \t]*```[ \t]*svg\b/m.test(bodyText) && !tags.includes("svg")) tags.push("svg");
+  return tags;
+}
+
+// Renderers for code-fenced diagrams that need a code <-> image toggle.
+function renderMermaidToggle(codeText) {
+  const codeHtml = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code class="language-mermaid">${esc(codeText)}</code></pre>`;
+  const imgHtml = `<pre class="mermaid">${esc(codeText)}</pre>`;
+  return `<div class="mdp-diagram-toggle" data-diagram="mermaid">`
+    + `<div class="mdp-diagram-toolbar">`
+    + `<span class="mdp-diagram-kind">mermaid</span>`
+    + `<button type="button" class="mdp-diagram-btn mdp-diagram-btn-active" data-view="image">graph</button>`
+    + `<button type="button" class="mdp-diagram-btn" data-view="code">code</button>`
+    + `</div>`
+    + `<div class="mdp-diagram-views">`
+    + `<div class="mdp-diagram-view mdp-diagram-view-image mdp-diagram-view-active" data-view="image">${imgHtml}</div>`
+    + `<div class="mdp-diagram-view mdp-diagram-view-code" data-view="code">${codeHtml}</div>`
+    + `</div></div>`;
+}
+
+function renderSvgToggle(codeText) {
+  const byteLen = new TextEncoder().encode(codeText).length;
+  const kb = (byteLen / 1024).toFixed(1);
+  const codeHtml = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code class="language-svg">${esc(codeText)}</code></pre>`;
+  if (byteLen > SVG_INLINE_LIMIT_BYTES) {
+    return `<div class="mdp-diagram-toggle mdp-diagram-toolarge" data-diagram="svg">`
+      + `<div class="mdp-diagram-toolbar"><span class="mdp-diagram-kind">svg · ${kb} KB · too large</span></div>`
+      + `<div class="mdp-diagram-views">`
+      + `<aside class="mdp-callout mdp-callout-warning"><div class="mdp-callout-label">SVG 過大</div><div class="mdp-callout-body">SVG 內容 ${kb} KB,超過 16 KB 內聯閾值。建議拆成外部 <code>.svg</code> 檔,改用 <code>![alt](./diagram.svg)</code> 引用。</div></aside>`
+      + codeHtml
+      + `</div></div>`;
+  }
+  // Sanitize: drop <script> tags and on* attribute handlers before injecting raw SVG.
+  let safeSvg = codeText
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+  if (!/<svg[\s>]/i.test(safeSvg)) {
+    safeSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><text x="10" y="38" font-size="14" fill="#94a3b8">無效的 SVG 內容</text></svg>`;
+  }
+  return `<div class="mdp-diagram-toggle" data-diagram="svg">`
+    + `<div class="mdp-diagram-toolbar">`
+    + `<span class="mdp-diagram-kind">svg · ${kb} KB</span>`
+    + `<button type="button" class="mdp-diagram-btn mdp-diagram-btn-active" data-view="image">graph</button>`
+    + `<button type="button" class="mdp-diagram-btn" data-view="code">code</button>`
+    + `</div>`
+    + `<div class="mdp-diagram-views">`
+    + `<div class="mdp-diagram-view mdp-diagram-view-image mdp-diagram-view-active" data-view="image"><div class="mdp-svg-host">${safeSvg}</div></div>`
+    + `<div class="mdp-diagram-view mdp-diagram-view-code" data-view="code">${codeHtml}</div>`
+    + `</div></div>`;
+}
 const GFM_ALERT_RE = /^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/;
 const BLOCK_HEADER_PATTERN = /^\s*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/;
 
@@ -2545,8 +2922,11 @@ function renderBody(bodyLines, indent, blockType, captionCounters) {
       while (j < norm.length && !CODE_FENCE_RE.test(norm[j])) { codeLines.push(norm[j]); j++; }
       const codeText = codeLines.join("\n");
       let inner;
-      if (lang.toLowerCase() === "mermaid") {
-        inner = `<pre class="mermaid">${esc(codeText)}</pre>`;
+      const langLower = lang.toLowerCase();
+      if (langLower === "mermaid") {
+        inner = renderMermaidToggle(codeText);
+      } else if (langLower === "svg") {
+        inner = renderSvgToggle(codeText);
       } else {
         const cls = lang ? ` class="language-${esc(lang)}"` : "";
         inner = `<pre class="mdp-code"><button class="mdp-copy" type="button" aria-label="Copy">Copy</button><code${cls}>${esc(codeText)}</code></pre>`;
@@ -2723,12 +3103,25 @@ function renderBlockHeader(b, depth) {
   if (m.audience && m.audience !== "everyone") rightItems.push(`<span class="mdp-meta-item mdp-audience" title="audience">${esc(m.audience)}</span>`);
   rightItems.push(`<span class="mdp-type-badge" title="type">${esc(b.type)}</span>`);
   const level = Math.min(2 + depth, 6);
+
+  // Keyword chips — user-declared `keywords:` wins; otherwise auto-extracted suggestions.
+  const userKws = parseListMeta(m.keywords);
+  const autoKws = (b._autoKeywords || []);
+  const showKws = userKws.length ? userKws : autoKws;
+  const kwSource = userKws.length ? "user" : "auto";
+  const kwRow = showKws.length
+    ? `<div class="mdp-keywords-row" data-source="${kwSource}">`
+      + `<span class="mdp-keywords-label">${kwSource === "auto" ? "auto keywords" : "keywords"}</span>`
+      + showKws.map(k => `<span class="mdp-keyword-chip" data-source="${kwSource}">${esc(k)}</span>`).join("")
+      + `</div>`
+    : "";
+
   return `<header class="mdp-block-header"><h${level} class="mdp-block-title">`
     + `<a class="mdp-anchor" href="#${esc(b.id)}">#</a>`
     + `<span class="mdp-title-text">${esc(title)}</span>`
     + (pills.length ? `<span class="mdp-pills">${pills.join("")}</span>` : "")
     + `<span class="mdp-meta-right">${rightItems.join("")}</span>`
-    + `</h${level}></header>`;
+    + `</h${level}>${kwRow}</header>`;
 }
 
 function parseListMeta(s) {
@@ -2845,6 +3238,31 @@ function renderDocument(text, opts = {}) {
   const title = h1Idx >= 0 ? lines[h1Idx].slice(2).trim() : (opts.title || "Markdown+ Document");
   const captionCounters = {};
   let intro = "";
+
+  // Auto keyword extraction — runs once over the whole document; each block gets its top-N
+  // local hits. User-declared `keywords:` metadata always wins; auto suggestions only fill gaps.
+  // Structural fence markers (svg / mermaid) are prepended because n-gram analysis strips fence
+  // content via cleanText() and would never surface them.
+  if (opts.autoKeywords !== false && blocks.length > 0) {
+    try {
+      const extractor = new KeywordExtractor({
+        minLen: 2, maxLen: 8, minFreq: 2, minPmi: 1.0, minEntropy: 0.4,
+      });
+      extractor.fit(text);
+      const candidates = extractor.discover({ topK: 80 });
+      const perBlock = opts.keywordsPerBlock || 5;
+      for (const b of blocks) {
+        if (b.metadata.keywords) continue;
+        const bodyText = b.bodyLines.join("\n");
+        const structural = detectStructuralTags(bodyText);
+        const kws = extractor.keywordsForBlock(bodyText, candidates, perBlock);
+        const merged = [...structural, ...kws.filter(k => !structural.includes(k))];
+        if (merged.length) b._autoKeywords = merged;
+      }
+    } catch (e) {
+      console.warn("KeywordExtractor failed:", e);
+    }
+  }
 
   // Three rendering modes for content above first block:
   // 1) No blocks at all → render whole document body as plain markdown + show banner
@@ -3002,6 +3420,35 @@ const __KITCHEN_SINK__ = `# Q1 2026 Auth Service Review
   \`\`\`
 
   refresh 流程從 client 看是透明的,gateway 自動換 token,client 只感知重試一次。
+
+- **#sla-trend-svg** \`type:figure\` \`media:svg\` \`alt:q1-sla-trend\`
+
+  *Figure: Q1 API SLA 月度趨勢(內嵌 SVG,可在「圖/碼」兩種視圖切換)*
+
+  \`\`\`svg
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="100%" height="120">
+    <rect x="0" y="0" width="320" height="120" fill="#f8fafc" rx="6"/>
+    <line x1="30" y1="20" x2="30" y2="100" stroke="#cbd5e1" stroke-width="1"/>
+    <line x1="30" y1="100" x2="310" y2="100" stroke="#cbd5e1" stroke-width="1"/>
+    <text x="6" y="28" font-size="9" fill="#64748b">100</text>
+    <text x="2" y="62" font-size="9" fill="#64748b">99.95</text>
+    <text x="2" y="96" font-size="9" fill="#64748b">99.90</text>
+    <polyline points="50,40 130,56 210,70 290,72" fill="none" stroke="#0ea5e9" stroke-width="2"/>
+    <circle cx="50" cy="40" r="3" fill="#0ea5e9"/>
+    <circle cx="130" cy="56" r="3" fill="#0ea5e9"/>
+    <circle cx="210" cy="70" r="3" fill="#0ea5e9"/>
+    <circle cx="290" cy="72" r="3" fill="#f59e0b"/>
+    <line x1="30" y1="50" x2="310" y2="50" stroke="#16a34a" stroke-dasharray="3,3" stroke-width="1"/>
+    <text x="240" y="46" font-size="9" fill="#16a34a">target 99.95%</text>
+    <text x="50" y="116" font-size="9" fill="#64748b">1月</text>
+    <text x="128" y="116" font-size="9" fill="#64748b">2月</text>
+    <text x="208" y="116" font-size="9" fill="#64748b">3月</text>
+    <text x="284" y="116" font-size="9" fill="#64748b">4月</text>
+  </svg>
+  \`\`\`
+
+  4 月 SLA 跌至 99.92%(琥珀色點),低於 99.95% 目標線。可切換成「碼」檢視原始 SVG markup。
+  超過 16 KB 的 SVG 會強制要求外部檔,避免污染 source 可讀性。
 
 > [!IMPORTANT]
 > 5/3 那次 outage 與 token service memory leak 有關,詳見 \`#inc-2026-05-03\`,
@@ -3379,6 +3826,18 @@ HTML:
         }
       };
     });
+    // Diagram (mermaid / svg) code <-> image toggle
+    preview.querySelectorAll(".mdp-diagram-toggle").forEach(d => {
+      const btns = d.querySelectorAll(".mdp-diagram-btn");
+      const views = d.querySelectorAll(".mdp-diagram-view");
+      btns.forEach(btn => {
+        btn.onclick = () => {
+          const target = btn.dataset.view;
+          btns.forEach(b => b.classList.toggle("mdp-diagram-btn-active", b === btn));
+          views.forEach(v => v.classList.toggle("mdp-diagram-view-active", v.dataset.view === target));
+        };
+      });
+    });
   }
 
   // ---- Mermaid loader (CDN, async, graceful fallback if offline) ----
@@ -3501,6 +3960,48 @@ HTML:
     if (editor.value.trim() && !confirm("確定要丟掉目前內容,改載入預設範例?")) return;
     editor.value = await loadSample();
     try { localStorage.removeItem(LS_KEY); } catch (e) {}
+    update();
+  });
+
+  // ---- Autofill keywords: run extractor over source, write `keywords:a,b,c` into each
+  // block header line that doesn't already declare one. Operates on the editor textarea
+  // so changes are persisted via the normal update() flow.
+  document.getElementById("autofill-keywords").addEventListener("click", () => {
+    const text = editor.value;
+    const blocks = parseBlocks(text);
+    if (blocks.length === 0) {
+      alert("沒有偵測到 Markdown+ block。請先有 `- **#id**` 結構的內容。");
+      return;
+    }
+    const extractor = new KeywordExtractor({
+      minLen: 2, maxLen: 8, minFreq: 2, minPmi: 1.0, minEntropy: 0.4,
+    });
+    extractor.fit(text);
+    const cands = extractor.discover({ topK: 80 });
+    const lines = text.split(/\r?\n/);
+    const proposals = [];
+    for (const b of blocks) {
+      if (b.metadata.keywords) continue;
+      const bodyText = b.bodyLines.join("\n");
+      const structural = detectStructuralTags(bodyText);
+      const kws = extractor.keywordsForBlock(bodyText, cands, 5);
+      const merged = [...structural, ...kws.filter(k => !structural.includes(k))];
+      if (!merged.length) continue;
+      proposals.push({ blockId: b.id, lineIdx: b.line - 1, kws: merged });
+    }
+    if (proposals.length === 0) {
+      alert("沒有可補的 block(都已宣告 keywords 或抽不出可信關鍵詞)。");
+      return;
+    }
+    const preview = proposals.slice(0, 8).map(p => `#${p.blockId}: ${p.kws.join(", ")}`).join("\n");
+    const extra = proposals.length > 8 ? `\n…(以及其他 ${proposals.length - 8} 個 block)` : "";
+    if (!confirm(`將為 ${proposals.length} 個 block 補上 \`keywords:…\` metadata:\n\n${preview}${extra}\n\n要套用嗎?`)) return;
+    for (const p of proposals) {
+      const orig = lines[p.lineIdx];
+      const insertion = " `keywords:" + p.kws.join(",") + "`";
+      lines[p.lineIdx] = orig.replace(/\s+$/, "") + insertion;
+    }
+    editor.value = lines.join("\n");
     update();
   });
 
