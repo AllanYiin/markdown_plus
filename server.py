@@ -25,6 +25,15 @@ Endpoints:
     POST /api/rewrite            → NDJSON stream (text/plain + X-Stream-Format: ndjson)
                                     body: {"from": "markdown"|"html", "content": str}
                                     events: {type:start}, {type:delta,delta}, {type:done,...}, {type:error,...}
+    POST /api/chat               → NDJSON stream — chat-with-document agent loop.
+                                    body: {"doc": str (Markdown+ source),
+                                           "messages": [{role,content,...}, ...]}
+                                    events: start / iteration / tool_call / tool_result /
+                                            delta / done / error
+                                    The LLM has the 7 mdp_* tools auto-injected from
+                                    tools/openai-function-defs.json; `path` is replaced
+                                    with a per-request temp file so the model only picks
+                                    block ids, queries, depths etc.
     GET  /api/mdp/list           → JSON block manifest (params: path, depth, type, status, where, fields)
     GET  /api/mdp/tree           → JSON nested block hierarchy (params: path)
     GET  /api/mdp/get            → JSON one block's metadata (params: path, id)
@@ -39,10 +48,14 @@ Endpoints:
 """
 from __future__ import annotations
 
+import copy
+import inspect
 import json
 import os
 import re
 import sys
+import tempfile
+import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -67,6 +80,74 @@ try:
 except Exception as _e:  # noqa: BLE001
     mdp_query = None
     _MDP_IMPORT_ERROR = str(_e)
+
+
+# ---------------- Chat-with-document tool dispatcher ----------------
+# The LLM gets the 7 mdp_* tools from tools/openai-function-defs.json. We strip
+# `path` from the schema (so the model isn't allowed to pick a file) and inject
+# the user's uploaded doc via a per-request temp file before executing.
+
+TOOLS_JSON = ROOT / "tools" / "openai-function-defs.json"
+
+# Maps tool name (mdp_*) → (function_name_in_query_module, arg_alias_map).
+# arg_alias_map remaps the OpenAI-schema arg name to the Python function's
+# parameter name when they differ (e.g. tool exposes `query`, function takes `q`).
+_TOOL_DISPATCH: dict[str, tuple[str, dict[str, str]]] = {
+    "mdp_list_blocks":    ("list_blocks",    {}),
+    "mdp_get_block_meta": ("get_block_meta", {"id": "block_id"}),
+    "mdp_list_children":  ("list_children",  {"id": "block_id"}),
+    "mdp_read_block":     ("read_block",     {"id": "block_id"}),
+    "mdp_search_blocks":  ("search_blocks",  {}),
+    "mdp_resolve_xref":   ("resolve_xref",   {"id": "block_id"}),
+    "mdp_tree":           ("tree",           {}),
+}
+
+
+def _load_chat_tools() -> list[dict] | None:
+    """Load tool schemas with `path` stripped (we inject server-side)."""
+    if not TOOLS_JSON.is_file():
+        return None
+    try:
+        raw = json.loads(TOOLS_JSON.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    out: list[dict] = []
+    for t in raw:
+        ft = copy.deepcopy(t)
+        params = ft.get("function", {}).get("parameters", {})
+        props = params.get("properties", {})
+        props.pop("path", None)
+        if "required" in params:
+            params["required"] = [r for r in params["required"] if r != "path"]
+        out.append(ft)
+    return out
+
+
+def _execute_mdp_tool(tool_name: str, raw_args: dict, doc_path: Path) -> object:
+    """Execute one tool call. Inject doc_path; remap arg names; tolerate bad json."""
+    if mdp_query is None:
+        return {"error": "block-query module unavailable"}
+    if tool_name not in _TOOL_DISPATCH:
+        return {"error": f"unknown tool: {tool_name}"}
+    fn_name, alias_map = _TOOL_DISPATCH[tool_name]
+    fn = getattr(mdp_query, fn_name, None)
+    if fn is None:
+        return {"error": f"function {fn_name} not found in query module"}
+
+    # Remap arg names from schema → function signature
+    args: dict = {"path": doc_path}
+    for k, v in (raw_args or {}).items():
+        args[alias_map.get(k, k)] = v
+
+    # Drop any kwargs the function doesn't accept (LLM occasionally invents some)
+    sig = inspect.signature(fn)
+    valid = set(sig.parameters.keys())
+    args = {k: v for k, v in args.items() if k in valid}
+
+    try:
+        return fn(**args)
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def build_prompt(kind: str, content: str) -> str:
@@ -148,6 +229,8 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/rewrite":
             return self.handle_rewrite()
+        if path == "/api/chat":
+            return self.handle_chat()
         self.send_error(404, "endpoint not found")
 
     # ---- GET ----
@@ -161,6 +244,11 @@ class Handler(SimpleHTTPRequestHandler):
                 "effort": EFFORT,
                 "has_key": bool(os.environ.get("OPENAI_API_KEY")),
                 "mdp_query": mdp_query is not None,
+                "chat_tools": (
+                    len(_load_chat_tools() or [])
+                    if (TOOLS_JSON.is_file() and mdp_query is not None)
+                    else 0
+                ),
             })
         if path.startswith("/api/mdp/"):
             return self.handle_mdp(path, parse_qs(parsed.query))
@@ -372,6 +460,186 @@ class Handler(SimpleHTTPRequestHandler):
                 write_ndjson(err)
             else:
                 return self.json_response(500, {"error": err["error"]})
+
+    # ---- /api/chat — agent loop over Markdown+ document with mdp_* tools ----
+    # Body: {"doc": "<full Markdown+ source>", "messages": [{role, content}, ...]}
+    # Streams NDJSON with event types:
+    #   {type:"start", model, tools_loaded}
+    #   {type:"iteration", n}
+    #   {type:"tool_call", id, name, args}
+    #   {type:"tool_result", id, ok, result|error}
+    #   {type:"delta", delta}           — assistant text chunks
+    #   {type:"done", iterations, tool_calls, output_tokens}
+    #   {type:"error", error}
+    MAX_AGENT_ITERATIONS = 6
+
+    def handle_chat(self):
+        # ---- Validate body ----
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0:
+                return self.json_response(400, {"error": "empty body"})
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (json.JSONDecodeError, ValueError) as e:
+            return self.json_response(400, {"error": f"invalid JSON: {e}"})
+
+        doc = data.get("doc", "")
+        history = data.get("messages") or []
+        if not doc.strip():
+            return self.json_response(400, {"error": "doc is empty"})
+        if not isinstance(history, list) or not history:
+            return self.json_response(400, {"error": "messages must be a non-empty list"})
+        if not os.environ.get("OPENAI_API_KEY"):
+            return self.json_response(500, {"error": "OPENAI_API_KEY not set"})
+
+        tools = _load_chat_tools()
+        if tools is None:
+            return self.json_response(500, {"error": "tools schema unavailable"})
+
+        try:
+            from openai import OpenAI
+        except ImportError:
+            return self.json_response(500, {"error": "openai package missing"})
+
+        client = OpenAI()
+        headers_sent = False
+
+        # Persist doc to a temp file inside the repo so cli/python/query.py can
+        # parse it via Path (its API is path-based). Cleaned up at end.
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".chat.mdp.md",
+            dir=str(ROOT), delete=False,
+        )
+        try:
+            tmp.write(doc)
+            tmp.close()
+            doc_path = Path(tmp.name)
+
+            def write_ndjson(obj: dict) -> None:
+                nonlocal headers_sent
+                if not headers_sent:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain; charset=utf-8")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.send_header("X-Stream-Format", "ndjson")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("X-Accel-Buffering", "no")
+                    self.end_headers()
+                    headers_sent = True
+                try:
+                    self.wfile.write((json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8"))
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            # Light system prompt so the LLM understands the document context.
+            messages: list[dict] = [
+                {"role": "system", "content": (
+                    "You are answering questions about a Markdown+ document the user uploaded. "
+                    "Always use the mdp_* tools to inspect the document — start with mdp_list_blocks "
+                    "to see what's available, then mdp_get_block_meta or mdp_read_block on specific "
+                    "block ids. Don't guess the document's content. Cite block ids in your answer "
+                    "(e.g. \"`#decision-canary` says ...\"). Keep answers concise unless asked otherwise."
+                )},
+            ]
+            messages.extend(history)
+
+            write_ndjson({"type": "start", "model": MODEL, "tools_loaded": len(tools)})
+
+            total_tool_calls = 0
+            total_output_tokens = 0
+            final_text = ""
+            for it in range(1, self.MAX_AGENT_ITERATIONS + 1):
+                write_ndjson({"type": "iteration", "n": it})
+
+                resp = client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                )
+                usage = getattr(resp, "usage", None)
+                if usage:
+                    total_output_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+
+                msg = resp.choices[0].message
+                tool_calls = getattr(msg, "tool_calls", None) or []
+
+                if tool_calls:
+                    # Append assistant turn that requested the tools
+                    messages.append({
+                        "role": "assistant",
+                        "content": msg.content or "",
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            } for tc in tool_calls
+                        ],
+                    })
+                    for tc in tool_calls:
+                        total_tool_calls += 1
+                        name = tc.function.name
+                        try:
+                            args = json.loads(tc.function.arguments or "{}")
+                        except json.JSONDecodeError as e:
+                            args = {"_parse_error": str(e), "_raw": tc.function.arguments}
+                        write_ndjson({"type": "tool_call", "id": tc.id, "name": name, "args": args})
+
+                        result = _execute_mdp_tool(name, args, doc_path)
+                        # NDJSON-safe: result may be list/dict/scalar
+                        is_err = isinstance(result, dict) and "error" in result
+                        write_ndjson({
+                            "type": "tool_result",
+                            "id": tc.id,
+                            "ok": not is_err,
+                            "result": result,
+                        })
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                        })
+                    continue  # loop with tool results in context
+
+                # Final assistant text
+                final_text = msg.content or ""
+                if final_text:
+                    # Emit in one chunk; chat.completions wasn't streamed.
+                    write_ndjson({"type": "delta", "delta": final_text})
+                write_ndjson({
+                    "type": "done",
+                    "iterations": it,
+                    "tool_calls": total_tool_calls,
+                    "output_tokens": total_output_tokens,
+                    "final_text_len": len(final_text),
+                })
+                return
+
+            # Hit iteration cap — bail with what we have
+            write_ndjson({
+                "type": "error",
+                "error": f"agent loop exceeded {self.MAX_AGENT_ITERATIONS} iterations",
+            })
+        except Exception as e:  # noqa: BLE001
+            err = {"type": "error", "error": f"{type(e).__name__}: {e}"}
+            if headers_sent:
+                try:
+                    self.wfile.write((json.dumps(err) + "\n").encode("utf-8"))
+                    self.wfile.flush()
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                return self.json_response(500, {"error": err["error"]})
+        finally:
+            try:
+                Path(tmp.name).unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
 
     # ---- helpers ----
     def json_response(self, status: int, body: dict) -> None:

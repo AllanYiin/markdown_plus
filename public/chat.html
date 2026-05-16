@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown+ — Chat with Document</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+:root {
+  --bg:            #ffffff;
+  --bg-subtle:     #fafafa;
+  --surface:       #ffffff;
+  --surface-2:     #f1f5f9;
+  --surface-3:     #e2e8f0;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text:          #0f172a;
+  --text-muted:    #475569;
+  --text-faint:    #94a3b8;
+  --accent:        #4f46e5;
+  --accent-deep:   #4338ca;
+  --accent-hover:  #3730a3;
+  --accent-soft:   #eef2ff;
+  --accent-on:     #ffffff;
+  --accent-2:      #0891b2;
+  --ok:            #16a34a;
+  --warn:          #d97706;
+  --err:           #dc2626;
+  --code-bg:       #0f172a;
+  --code-text:     #e2e8f0;
+  --code-muted:    #94a3b8;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+  --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
+  --t-fast: 120ms ease-out;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 var(--font-sans);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* --- Nav (matches other pages) --- */
+.site-nav {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--accent-deep); color: var(--accent-on);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
+}
+.site-nav-inner {
+  max-width: 1280px; margin: 0 auto;
+  padding: var(--sp-3) var(--sp-5);
+  display: flex; align-items: center; gap: var(--sp-5);
+}
+.site-logo {
+  font-weight: 800; font-size: 20px; letter-spacing: -0.02em;
+  color: var(--accent-on); text-decoration: none;
+  display: flex; align-items: baseline; gap: 2px;
+}
+.site-logo span { color: #fbbf24; font-size: 24px; line-height: 1; }
+.site-nav-links {
+  display: flex; gap: var(--sp-2); margin-left: auto; font-size: 14px;
+  align-items: center;
+}
+.site-nav-links a {
+  color: rgba(255,255,255,0.78);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.site-nav-links a:hover { color: var(--accent-on); background: rgba(255,255,255,0.1); }
+.site-nav-links a.active {
+  color: var(--accent-on); background: rgba(255,255,255,0.15); font-weight: 600;
+}
+.site-nav-github {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 8px; color: rgba(255,255,255,0.78);
+  border-radius: var(--r-md); margin-left: var(--sp-2);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.site-nav-github:hover { color: var(--accent-on); background: rgba(255,255,255,0.1); }
+.site-nav-github svg { display: block; }
+
+/* --- Chat shell: two-column layout --- */
+.chat-shell {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 1fr);
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+@media (max-width: 760px) {
+  .chat-shell { grid-template-columns: 1fr; grid-template-rows: 30vh 1fr; }
+}
+
+/* --- Doc pane (left) --- */
+.chat-doc {
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  min-width: 0; min-height: 0;
+}
+.chat-doc-head {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.chat-doc-head button {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  padding: 4px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font: inherit;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.chat-doc-head button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.chat-doc-head .doc-stats { color: var(--text-muted); font-size: 12px; margin-left: auto; font-family: var(--font-mono); }
+#doc-source {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--surface);
+  padding: var(--sp-3);
+  font: 12px/1.5 var(--font-mono);
+  color: var(--text);
+  resize: none;
+  outline: none;
+  min-height: 0;
+}
+
+/* --- Chat pane (right) --- */
+.chat-panel {
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  min-width: 0; min-height: 0;
+}
+.chat-panel-head {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.chat-panel-head .health { font-family: var(--font-mono); font-size: 12px; }
+.chat-panel-head .health.ok { color: var(--ok); }
+.chat-panel-head .health.err { color: var(--err); }
+.chat-panel-head button.reset-btn {
+  background: transparent; border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); padding: 3px 10px; font: inherit; cursor: pointer;
+  color: var(--text-muted); margin-left: auto;
+}
+.chat-panel-head button.reset-btn:hover { color: var(--err); border-color: var(--err); }
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4) var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  min-height: 0;
+}
+.msg { display: flex; gap: var(--sp-2); max-width: 100%; }
+.msg-role {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+.msg-user .msg-role { background: var(--accent); color: var(--accent-on); }
+.msg-assistant .msg-role { background: var(--surface-2); color: var(--accent-deep); }
+.msg-body {
+  flex: 1; min-width: 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.55;
+}
+.msg-user .msg-body {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.msg-assistant .msg-body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.msg-assistant .msg-body code {
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.msg-assistant .msg-body a {
+  color: var(--accent); text-decoration: underline;
+}
+
+/* --- Tool call / result cards (collapsible) --- */
+.tool-card {
+  margin-left: 36px;  /* indent under assistant avatar */
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-2);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font-size: 12px;
+  overflow: hidden;
+}
+.tool-card.tool-card-result { border-left-color: var(--ok); }
+.tool-card.tool-card-result.err { border-left-color: var(--err); }
+.tool-card summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 10px;
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-family: var(--font-mono);
+  color: var(--text);
+  user-select: none;
+}
+.tool-card summary::-webkit-details-marker { display: none; }
+.tool-card summary::before {
+  content: "▸"; transition: transform var(--t-fast);
+  flex-shrink: 0; color: var(--text-faint);
+}
+.tool-card[open] summary::before { transform: rotate(90deg); }
+.tool-card .tool-kind {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--accent-2); font-weight: 700;
+}
+.tool-card-result .tool-kind { color: var(--ok); }
+.tool-card-result.err .tool-kind { color: var(--err); }
+.tool-card .tool-name { font-weight: 600; }
+.tool-card .tool-args-inline {
+  color: var(--text-muted); font-size: 11px; margin-left: auto;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 50%;
+}
+.tool-card .tool-body {
+  padding: 8px 10px;
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 320px;
+  overflow-y: auto;
+  border-top: 1px solid var(--surface-3);
+}
+.tool-card .tool-body .json-key { color: #c4b5fd; }
+.tool-card .tool-body .json-str { color: #86efac; }
+.tool-card .tool-body .json-num { color: #fbbf24; }
+
+/* --- Input form (bottom) --- */
+.chat-form {
+  display: flex; align-items: flex-end; gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#chat-input {
+  flex: 1;
+  font: inherit;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  resize: none;
+  outline: none;
+  min-height: 56px;
+  max-height: 200px;
+  background: var(--bg);
+}
+#chat-input:focus { border-color: var(--accent); }
+#chat-send {
+  background: var(--accent); color: var(--accent-on);
+  border: 1px solid var(--accent);
+  padding: 10px 18px;
+  border-radius: var(--r-md);
+  font: 14px/1 inherit; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+#chat-send:hover:not(:disabled) { background: var(--accent-hover); }
+#chat-send:disabled { background: var(--text-faint); border-color: var(--text-faint); cursor: not-allowed; }
+
+.placeholder-card {
+  margin: auto; max-width: 480px;
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+}
+.placeholder-card h3 { margin: 0 0 var(--sp-3); color: var(--text); }
+.placeholder-card ol { text-align: left; padding-left: 24px; line-height: 1.7; }
+
+.status-line {
+  padding: 0 var(--sp-4) var(--sp-2);
+  font-size: 12px; color: var(--text-muted);
+  font-family: var(--font-mono);
+  min-height: 18px;
+}
+.status-line.err { color: var(--err); }
+</style>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="site-nav-inner">
+    <a class="site-logo" href="./index.html">Markdown<span>+</span></a>
+    <div class="site-nav-links">
+      <a href="./index.html">為何需要</a>
+      <a href="./syntax.html">語法</a>
+      <a href="./tutorial.html">教學</a>
+      <a href="./skill.html">Skill</a>
+      <a href="./chat.html" class="active">Chat</a>
+      <a href="./playground.html">Playground</a>
+      <a class="site-nav-github" href="https://github.com/AllanYiin/markdown_plus" target="_blank" rel="noopener" aria-label="GitHub repository" title="GitHub repository">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+          <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.13c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.2-1.49 3.17-1.18 3.17-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.55C20.71 21.38 24 17.08 24 12 24 5.65 18.85.5 12.5.5Z"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<div class="chat-shell">
+
+  <!-- ===== Left: document pane ===== -->
+  <aside class="chat-doc">
+    <header class="chat-doc-head">
+      <button id="file-load" type="button" title="從本機載入 .md / .mdp.md / .mdp 檔">
+        ↓ 載入文件
+      </button>
+      <input type="file" id="file-input" accept=".md,.mdp,.markdown,.txt,text/markdown,text/plain" style="display:none">
+      <button id="sample-load" type="button" title="載入內建 kitchen-sink 範例">範例</button>
+      <span class="doc-stats" id="doc-stats">未載入</span>
+    </header>
+    <textarea id="doc-source" readonly placeholder="從本機選一份 Markdown+ 文件…
+聊天時 LLM 會用 mdp_list_blocks / read_block / search_blocks 等工具讀這份文件,
+回答你針對它的問題。"></textarea>
+  </aside>
+
+  <!-- ===== Right: chat pane ===== -->
+  <section class="chat-panel">
+    <header class="chat-panel-head">
+      <span class="health" id="chat-health">checking…</span>
+      <button class="reset-btn" id="reset-chat" type="button" title="清空對話歷史">清空對話</button>
+    </header>
+    <div class="chat-messages" id="messages">
+      <div class="placeholder-card">
+        <h3>基於 Markdown+ 文件問答</h3>
+        <ol>
+          <li>左側點「載入文件」或「範例」,匯入一份 .mdp.md</li>
+          <li>右下方輸入問題,送出</li>
+          <li>LLM 會用 7 個 <code>mdp_*</code> 工具(list / read / search / xref / tree …)漸進式讀取文件</li>
+          <li>每次工具呼叫的「name + args」與回傳結果都會以可摺疊卡片顯示</li>
+        </ol>
+      </div>
+    </div>
+    <div class="status-line" id="chat-status"></div>
+    <form class="chat-form" id="chat-form" autocomplete="off">
+      <textarea id="chat-input" placeholder="先載入文件再開始問問題…" disabled></textarea>
+      <button id="chat-send" type="submit" disabled>送出</button>
+    </form>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const docSource = document.getElementById("doc-source");
+  const docStats = document.getElementById("doc-stats");
+  const fileLoad = document.getElementById("file-load");
+  const fileInput = document.getElementById("file-input");
+  const sampleLoad = document.getElementById("sample-load");
+  const messagesEl = document.getElementById("messages");
+  const chatHealth = document.getElementById("chat-health");
+  const chatStatus = document.getElementById("chat-status");
+  const chatForm = document.getElementById("chat-form");
+  const chatInput = document.getElementById("chat-input");
+  const chatSend = document.getElementById("chat-send");
+  const resetBtn = document.getElementById("reset-chat");
+
+  // Conversation history sent to server each turn.
+  // Each entry: {role: "user"|"assistant", content: string}
+  let history = [];
+  let docLoaded = false;
+  let chatReady = false;
+
+  // ---- esc ----
+  function esc(s) {
+    return String(s)
+      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#39;");
+  }
+  function shortJsonInline(obj) {
+    const s = typeof obj === "string" ? obj : JSON.stringify(obj);
+    return s.length > 80 ? s.slice(0, 77) + "…" : s;
+  }
+  function prettyJson(obj) {
+    try {
+      return JSON.stringify(obj, null, 2);
+    } catch (e) {
+      return String(obj);
+    }
+  }
+  function formatPrettyJsonHtml(obj) {
+    const json = prettyJson(obj);
+    return esc(json)
+      .replace(/(&quot;[^&]+?&quot;)(:)/g, '<span class="json-key">$1</span>$2')
+      .replace(/:\s*(&quot;.*?&quot;)/g, ': <span class="json-str">$1</span>')
+      .replace(/:\s*(-?\d+(?:\.\d+)?)/g, ': <span class="json-num">$1</span>');
+  }
+
+  // ---- Doc handling ----
+  function updateDocStats() {
+    const text = docSource.value;
+    if (!text.trim()) {
+      docStats.textContent = "未載入";
+      docLoaded = false;
+      enableChat();
+      return;
+    }
+    const lines = text.split("\n").length;
+    const blocks = (text.match(/^[ \t]*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/gm) || []).length;
+    docStats.textContent = `${blocks} blocks · ${lines} lines · ${(text.length / 1024).toFixed(1)} KB`;
+    docLoaded = true;
+    enableChat();
+  }
+
+  fileLoad.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      docSource.value = String(e.target.result || "");
+      docSource.scrollTop = 0;
+      updateDocStats();
+      resetConversation();
+    };
+    reader.readAsText(f, "utf-8");
+    fileInput.value = "";
+  });
+
+  sampleLoad.addEventListener("click", async () => {
+    try {
+      const r = await fetch("/samples/kitchen-sink.mdp.md");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      docSource.value = await r.text();
+      docSource.scrollTop = 0;
+      updateDocStats();
+      resetConversation();
+    } catch (e) {
+      alert("載入範例失敗:" + e.message);
+    }
+  });
+
+  // ---- Health check (gate Send button on chat tools availability) ----
+  (async () => {
+    try {
+      const r = await fetch("/api/health");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const h = await r.json();
+      if (!h.has_key) {
+        chatHealth.textContent = "× 後端未設 OPENAI_API_KEY";
+        chatHealth.classList.add("err");
+        chatReady = false;
+        return;
+      }
+      if (!h.chat_tools) {
+        chatHealth.textContent = "× 後端未掛載 mdp_* 工具 schema";
+        chatHealth.classList.add("err");
+        chatReady = false;
+        return;
+      }
+      chatHealth.textContent = `✓ 服務就緒 · ${h.model} · ${h.chat_tools} tools`;
+      chatHealth.classList.add("ok");
+      chatReady = true;
+      enableChat();
+    } catch (e) {
+      chatHealth.textContent = "× 無法連到後端 /api/health";
+      chatHealth.classList.add("err");
+      chatReady = false;
+    }
+  })();
+
+  function enableChat() {
+    const on = docLoaded && chatReady;
+    chatInput.disabled = !on;
+    chatSend.disabled = !on;
+    if (on) {
+      chatInput.placeholder = "基於這份文件問問題…(Ctrl/Cmd + Enter 送出)";
+    } else if (!chatReady) {
+      chatInput.placeholder = "後端服務未就緒,先看左上方狀態";
+    } else {
+      chatInput.placeholder = "先載入文件再開始問問題…";
+    }
+  }
+
+  // ---- Rendering helpers ----
+  function clearPlaceholder() {
+    const ph = messagesEl.querySelector(".placeholder-card");
+    if (ph) ph.remove();
+  }
+
+  function addUserMessage(text) {
+    clearPlaceholder();
+    const wrap = document.createElement("div");
+    wrap.className = "msg msg-user";
+    wrap.innerHTML = `<div class="msg-role">U</div><div class="msg-body">${esc(text)}</div>`;
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  function addAssistantMessage() {
+    clearPlaceholder();
+    const wrap = document.createElement("div");
+    wrap.className = "msg msg-assistant";
+    wrap.innerHTML = `<div class="msg-role">AI</div><div class="msg-body"></div>`;
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+    return wrap.querySelector(".msg-body");
+  }
+
+  function addToolCallCard(name, args) {
+    clearPlaceholder();
+    const argsInline = shortJsonInline(args);
+    const det = document.createElement("details");
+    det.className = "tool-card";
+    det.innerHTML = `
+      <summary>
+        <span class="tool-kind">CALL</span>
+        <span class="tool-name">${esc(name)}</span>
+        <span class="tool-args-inline">${esc(argsInline)}</span>
+      </summary>
+      <div class="tool-body">${formatPrettyJsonHtml(args)}</div>
+    `;
+    messagesEl.appendChild(det);
+    scrollToBottom();
+    return det;
+  }
+
+  function addToolResultCard(name, result, ok) {
+    const summary = ok
+      ? (Array.isArray(result)
+          ? `${result.length} items`
+          : (typeof result === "object" && result ? `${Object.keys(result).length} fields` : "ok"))
+      : (result && result.error ? `error: ${result.error}` : "error");
+    const det = document.createElement("details");
+    det.className = "tool-card tool-card-result" + (ok ? "" : " err");
+    det.innerHTML = `
+      <summary>
+        <span class="tool-kind">${ok ? "RESULT" : "ERROR"}</span>
+        <span class="tool-name">${esc(name)}</span>
+        <span class="tool-args-inline">${esc(summary)}</span>
+      </summary>
+      <div class="tool-body">${formatPrettyJsonHtml(result)}</div>
+    `;
+    messagesEl.appendChild(det);
+    scrollToBottom();
+    return det;
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function resetConversation() {
+    history = [];
+    messagesEl.innerHTML = `
+      <div class="placeholder-card">
+        <h3>對話已清空</h3>
+        <ol>
+          <li>${docLoaded ? "文件還在,可直接開始問問題" : "請先載入文件"}</li>
+          <li>每次問答都是一輪 agent loop(若需要 LLM 會主動呼叫工具)</li>
+        </ol>
+      </div>`;
+    chatStatus.textContent = "";
+    chatStatus.classList.remove("err");
+  }
+
+  resetBtn.addEventListener("click", () => {
+    if (history.length === 0 || confirm("清空目前的對話歷史?")) resetConversation();
+  });
+
+  // ---- Send a chat turn ----
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (chatSend.disabled) return;
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    addUserMessage(text);
+    history.push({ role: "user", content: text });
+    chatInput.value = "";
+    chatInput.disabled = true;
+    chatSend.disabled = true;
+    chatStatus.textContent = "送出中…";
+    chatStatus.classList.remove("err");
+
+    // Track per-tool-call summary cards so the matching result attaches below
+    const callsById = new Map();
+    let assistantBody = null;
+    let assistantBuf = "";
+    const t0 = performance.now();
+
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc: docSource.value, messages: history }),
+      });
+      const ct = r.headers.get("content-type") || "";
+      if (!r.ok && ct.includes("application/json")) {
+        const j = await r.json();
+        throw new Error(j.error || "HTTP " + r.status);
+      }
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buf = "";
+      let toolCalls = 0;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          let msg;
+          try { msg = JSON.parse(line); } catch (e) { continue; }
+
+          if (msg.type === "start") {
+            chatStatus.textContent = `LLM 思考中… (${msg.model}, ${msg.tools_loaded} tools)`;
+          } else if (msg.type === "iteration") {
+            chatStatus.textContent = `iteration ${msg.n}…`;
+          } else if (msg.type === "tool_call") {
+            toolCalls++;
+            const card = addToolCallCard(msg.name, msg.args);
+            callsById.set(msg.id, card);
+            chatStatus.textContent = `呼叫 ${msg.name}…`;
+          } else if (msg.type === "tool_result") {
+            addToolResultCard(msg.name || "", msg.result, !!msg.ok);
+          } else if (msg.type === "delta") {
+            if (!assistantBody) assistantBody = addAssistantMessage();
+            assistantBuf += msg.delta;
+            assistantBody.textContent = assistantBuf;
+            scrollToBottom();
+          } else if (msg.type === "done") {
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            chatStatus.textContent = `完成 · ${elapsed}s · ${msg.iterations} iter · ${msg.tool_calls} tool calls · ${msg.output_tokens || "?"} tokens`;
+            if (assistantBuf.trim()) {
+              history.push({ role: "assistant", content: assistantBuf });
+            }
+          } else if (msg.type === "error") {
+            chatStatus.textContent = "錯誤:" + msg.error;
+            chatStatus.classList.add("err");
+            if (!assistantBody) {
+              addAssistantMessage().textContent = "❌ " + msg.error;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      chatStatus.textContent = "網路 / 後端錯誤:" + e.message;
+      chatStatus.classList.add("err");
+    } finally {
+      chatInput.disabled = false;
+      chatSend.disabled = false;
+      chatInput.focus();
+    }
+  });
+
+  // Ctrl/Cmd+Enter submit
+  chatInput.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      chatForm.requestSubmit();
+    }
+  });
+
+  enableChat();
+})();
+</script>
+</body>
+</html>
