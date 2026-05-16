@@ -100,7 +100,7 @@ markdown_plus/
 │       ├── SKILL.md
 │       ├── references/          # syntax / metadata / preservation / playbook ...
 │       └── assets/evals/        # trigger / functional / regression evals
-├── markdown-plus-author.skill   # 從 skills/markdown-plus-author/ 打包的 .skill zip
+│                                # 從這裡打包進 public/markdown-plus-author.skill
 │
 ├── docs/                        # 完整文件
 │   ├── 01-what-is-markdown-plus.md
@@ -336,9 +336,9 @@ PRs welcome。重點改動方向:
 - 改 viewer 行為 → 在 `public/lib/mdp-viewer.mjs`(browser)與 `cli/python/viewer.py`(CLI)同步維護;`public/playground.html` 自包含一份 inline 副本,行為要對齊
 - 改 validator 規則 → 在 `public/lib/mdp-validator.mjs` 與 `cli/python/validator.py` 同步
 - 改 block-query 邏輯 → 在 `cli/python/query.py` 與 `cli/node/query.mjs` 同步;`server.py` 的 `/api/mdp/*` 直接複用 `query.py`
-- 改 skill 內容 → 編輯 `skills/markdown-plus-author/`(canonical source),從這裡重打 `markdown-plus-author.skill` zip:
+- 改 skill 內容 → 編輯 `skills/markdown-plus-author/`(canonical source),從這裡重打 `public/markdown-plus-author.skill` zip(同 `skill.html` 下載連結指向的檔):
   ```bash
-  cd skills && python -c "import zipfile, os; src='markdown-plus-author'; out='../markdown-plus-author.skill';\
+  cd skills && python -c "import zipfile, os; src='markdown-plus-author'; out='../public/markdown-plus-author.skill';\
   zf=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [zf.write(os.path.join(r,f), os.path.join(r,f).replace(os.sep,'/')) for r,_,fs in os.walk(src) for f in fs]; zf.close()"
   ```
 

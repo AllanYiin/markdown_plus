@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Markdown+ — AI 與人類都讀得舒服的文件格式</title>
+<title>Markdown+ — Skill 下載與結構說明</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -842,257 +842,279 @@ footer.site-footer .footer-mark {
 
 </style>
 </head>
-<body class="page-marketing">
+<body class="page-marketing" style="background: var(--bg-subtle);">
 
 <nav class="site-nav">
   <div class="site-nav-inner">
     <a class="site-logo" href="./index.html">Markdown<span>+</span></a>
     <div class="site-nav-links">
-      <a href="./index.html" class="active">為何需要</a>
+      <a href="./index.html">為何需要</a>
       <a href="./syntax.html">語法</a>
       <a href="./tutorial.html">教學</a>
-      <a href="./skill.html">Skill</a>
+      <a href="./skill.html" class="active">Skill</a>
       <a href="./playground.html">Playground</a>
     </div>
   </div>
 </nav>
 
-<!-- ===== HERO: 2-col, dotted bg ===== -->
-<section class="band band-dotted">
-  <div class="hero-grid">
-    <div class="hero-text">
-      <div class="hero-tag"><span class="dot"></span>純 Markdown · 無新 dialect</div>
-      <h1>把 Markdown 變成<br><span class="accent">AI 工作本體 + 人類閱讀投影</span></h1>
-      <p class="lead">
-        Markdown+ 不是新格式。它是純 Markdown 加上三個習慣與一份受控 metadata 字彙表,
-        讓同一份文件既能被 AI 穩定查詢與修改,又能被 viewer 渲染成有導覽、卡片、儀表板的人類閱讀介面。
+<div class="docs-layout">
+
+  <!-- ===== Sidebar TOC ===== -->
+  <aside class="docs-sidebar">
+    <h4>本頁目錄</h4>
+    <ol>
+      <li><a href="#intro" class="docs-link">這個 skill 是什麼</a></li>
+      <li><a href="#download">下載 .skill</a></li>
+      <li><a href="#install">安裝到 Claude Code</a></li>
+      <li><a href="#structure">Skill 結構</a></li>
+      <li><a href="#references-walkthrough">references/ 內容</a></li>
+      <li><a href="#evals">assets/evals/</a></li>
+      <li><a href="#rebuild">從 source 重新打包</a></li>
+    </ol>
+    <h4>跳到別頁</h4>
+    <ol>
+      <li><a href="./index.html">← 為何需要</a></li>
+      <li><a href="./syntax.html">語法 →</a></li>
+      <li><a href="./tutorial.html">教學 →</a></li>
+      <li><a href="./playground.html">Playground →</a></li>
+    </ol>
+  </aside>
+
+  <!-- ===== Content card ===== -->
+  <article class="docs-content">
+
+    <section id="intro">
+      <h2>這個 skill 是什麼</h2>
+      <p>
+        <code class="site-code-inline">markdown-plus-author</code> 是一個
+        <a href="https://docs.claude.com/en/docs/claude-code/skills" target="_blank" rel="noopener">Claude Skill</a>,
+        讓 Claude(Claude Code、Claude Desktop、API)在寫或改寫
+        <strong>dev note / decision record / status report / runbook</strong>
+        這類 AI-readable 結構化文件時,直接產出合法的 Markdown+。
       </p>
-      <div class="site-cta">
-        <a class="site-btn" href="./playground.html">開啟 Playground →</a>
-        <a class="site-btn secondary" href="./syntax.html">看語法</a>
-      </div>
-    </div>
+      <p>Source 內已涵蓋:</p>
+      <ul>
+        <li>受控字彙表(<code class="site-code-inline">type:</code>、<code class="site-code-inline">status:</code>、<code class="site-code-inline">visibility:</code> 等 closed list)</li>
+        <li>強制保留 code fence / ASCII art / 對齊表格 1:1 的 hard rule</li>
+        <li><code class="site-code-inline">```svg</code> / <code class="site-code-inline">```mermaid</code> fence 的允許範圍與大小閾值</li>
+        <li><code class="site-code-inline">keywords:</code> 何時手寫、何時讓 viewer 自動抽取(配合本 repo 的 viewer)</li>
+        <li>HTML &rarr; Markdown+ 改寫 playbook(剝 <code class="site-code-inline">&lt;script&gt;</code> / 移除 base64 / 拆 chart spec / 對齊巢狀)</li>
+        <li>Functional + abuse + multilingual eval 集合</li>
+      </ul>
+    </section>
 
-    <!-- Mock window: source vs preview -->
-    <div class="mock-window">
-      <div class="mock-chrome">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <span class="url">localhost:8000/playground</span>
-      </div>
-      <div class="mock-split">
-        <div class="mock-source"><pre style="margin:0;font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;background:transparent;border:none;padding:0;">- <span class="kw">**#current-state**</span>
-  <span class="meta">`type:state`</span>
-  <span class="meta">`status:active`</span>
-  目前 Auth v2 在
-  production 運作。
+    <section id="download">
+      <h2>下載 .skill</h2>
+      <p>最新版的 skill bundle(zip 格式,內含 <code class="site-code-inline">SKILL.md</code> + references + assets):</p>
+      <p>
+        <a class="site-btn" href="./markdown-plus-author.skill" download="markdown-plus-author.skill">
+          &darr; 下載 markdown-plus-author.skill
+        </a>
+        <span style="margin-left: 12px; color: var(--text-muted); font-size: 14px;">
+          約 46 KB &middot; zipped &middot; 含 SKILL.md + 7 個 references + 2 個 eval JSON
+        </span>
+      </p>
+      <p>
+        Canonical source 在
+        <a href="https://github.com/AllanYiin/markdown_plus/tree/main/skills/markdown-plus-author" target="_blank" rel="noopener">
+          <code class="site-code-inline">skills/markdown-plus-author/</code></a>;
+        <code class="site-code-inline">.skill</code> 檔是從 source 用
+        <code class="site-code-inline">zipfile.ZipFile(..., ZIP_DEFLATED)</code> 重新打包。
+      </p>
+    </section>
 
-- <span class="kw">**#sla-kpi**</span>
-  <span class="meta">`type:kpi`</span>
-  <span class="meta">`value:99.92`</span>
-  <span class="meta">`target:99.95`</span>
-  SLA 99.92%,
-  距目標 0.03%。
+    <section id="install">
+      <h2>安裝到 Claude Code(或其他宿主)</h2>
+      <h3>Claude Code(CLI / 桌面)</h3>
+      <ol>
+        <li>下載 <code class="site-code-inline">markdown-plus-author.skill</code></li>
+        <li>解壓到 <code class="site-code-inline">~/.claude/skills/</code> 底下,得到 <code class="site-code-inline">~/.claude/skills/markdown-plus-author/SKILL.md</code></li>
+        <li>重啟 Claude Code,新對話時若使用者敘述命中 <code class="site-code-inline">description</code> 條件,skill 就會被觸發</li>
+      </ol>
+      <pre class="site-code"><code># macOS / Linux
+unzip -o ~/Downloads/markdown-plus-author.skill -d ~/.claude/skills/
 
-- <span class="kw">**#auth-v1**</span>
-  <span class="meta">`type:history`</span>
-  <span class="meta">`status:</span>
-  <span class="str">deprecated</span><span class="meta">`</span>
-  <span class="com"># 預設摺疊</span></pre></div>
-        <div class="mock-preview">
-          <div class="mock-block">
-            <div class="mock-block-title">Current State <span class="mock-pill ok">Active</span></div>
-            <div class="mock-text">目前 Auth v2 在 production 運作。</div>
-          </div>
-          <div class="mock-block" style="border-color: var(--accent); background: var(--accent-soft);">
-            <div class="mock-kpi-label">API SLA</div>
-            <div class="mock-kpi">99.92<span style="font-size:14px;color:var(--text-muted);">%</span></div>
-            <div class="mock-text" style="margin-top:4px;">Target 99.95% · <span style="color:var(--warn);font-weight:600;">−0.03</span></div>
-          </div>
-          <div class="mock-block" style="opacity:0.6;font-style:italic;">
-            <span style="color:var(--text-muted);">▸ Auth v1 (deprecated)</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+# Windows PowerShell
+Expand-Archive -Force "$env:USERPROFILE\Downloads\markdown-plus-author.skill" "$env:USERPROFILE\.claude\skills\"</code></pre>
 
-<!-- ===== Why band: tinted, compare 2-col ===== -->
-<section class="band band-tinted">
-  <div class="band-inner">
-    <h2 style="text-align:center; margin: 0 0 var(--sp-3);">為什麼需要 Markdown+</h2>
-    <p style="text-align:center; max-width:680px; margin:0 auto var(--sp-5); color:var(--text-muted); font-size:17px;">
-      AI 與人類對「好文件」期待相反。傳統做法走極端,兩邊都做不好。
-    </p>
-    <div class="compare-grid">
-      <div class="compare-card bad-card">
-        <h3><span class="label bad">舊路線</span> 純 Markdown</h3>
-        <ul style="margin:0;padding-left:18px;color:var(--text-muted);">
-          <li>對 AI 友善但難結構化</li>
-          <li>對人類陽春無 UI</li>
-          <li>無 metadata、無受控字彙</li>
-        </ul>
-      </div>
-      <div class="compare-card bad-card">
-        <h3><span class="label bad">舊路線</span> HTML</h3>
-        <ul style="margin:0;padding-left:18px;color:var(--text-muted);">
-          <li>tag 噪音、token 暴漲</li>
-          <li>難局部修改</li>
-          <li>常用 base64 inline 把 context 撐爆</li>
-        </ul>
-      </div>
-      <div class="compare-card good-card" style="grid-column: 1 / -1;">
-        <h3><span class="label good">Markdown+</span> 本體與投影分工</h3>
-        <p style="margin:0 0 var(--sp-2); color:var(--text-muted);">
-          <strong>Source</strong> 是給 AI 的純 Markdown + 受控 metadata。
-          <strong>View</strong> 由 viewer 把 source 渲染成漂亮 HTML。
-        </p>
-        <p style="margin:0; color:var(--text-muted);">
-          Source 不負責長得漂亮,Viewer 不負責保存語義。<strong>兩邊各做自己擅長的事</strong>。
-        </p>
-      </div>
-    </div>
-  </div>
-</section>
+      <h3>Claude Desktop</h3>
+      <p>
+        <em>Settings &rarr; Skills &rarr; Install from file</em>,選下載的 <code class="site-code-inline">.skill</code>。
+        Desktop 會自動解開並驗證 frontmatter。
+      </p>
 
-<!-- ===== Three principles: grid 3-up ===== -->
-<section class="band">
-  <div class="band-inner">
-    <h2 style="text-align:center;">三個核心原則</h2>
-    <p style="text-align:center;color:var(--text-muted);margin-top:0;">把這三件事做到位,AI 與人類同時受惠。</p>
-    <div class="feature-grid">
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-        </div>
-        <h3>Graceful Degradation</h3>
-        <p>Source 必須是合法 CommonMark。GitHub、Obsidian、VS Code 看仍是清楚的 bullet list,絕無亂碼。</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
-          </svg>
-        </div>
-        <h3>Source vs Projection</h3>
-        <p>Source 承載語義 (metadata + prose);viewer 加上 nav、status pill、card、gauge、callout。視覺不寫進 source。</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-          </svg>
-        </div>
-        <h3>No Inline Binary</h3>
-        <p>image / video / svg 一律外部相對路徑。base64 是 LLM context 殺手,一張圖可吃幾萬 tokens 還毫無語義。</p>
-      </div>
-    </div>
-  </div>
-</section>
+      <h3>Claude API / Agent SDK</h3>
+      <p>
+        把 <code class="site-code-inline">SKILL.md</code> 的 frontmatter <code class="site-code-inline">description</code> 與正文一起放進 system prompt;
+        references 視需要載入(metadata 規則建議常駐,其他可隨情境拉)。
+      </p>
+    </section>
 
-<!-- ===== Mermaid analogy: dark band ===== -->
-<section class="band band-dark">
-  <div class="band-inner band-tight" style="text-align:center;">
-    <p style="text-transform:uppercase; letter-spacing:0.12em; font-size:12px; color:#c4b5fd; margin:0 0 var(--sp-3); font-weight:600;">設計哲學</p>
-    <h2 style="font-size:32px; margin:0 0 var(--sp-3);">跟 Mermaid 同一條路</h2>
-    <p style="font-size:18px; line-height:1.7; max-width:680px; margin:0 auto;">
-      Mermaid 在 GitHub render 成圖,在純文字 editor 看是合法 code fence。
-      Markdown+ 在 GitHub 看是有結構的 bullet list,在 viewer 看是有互動的文件。
-      <strong style="color:#fff;">Source 從頭到尾是合法 CommonMark,不需要任何 dialect 支援</strong>。
-    </p>
-  </div>
-</section>
+    <section id="structure">
+      <h2>Skill 結構</h2>
+      <p>解開 <code class="site-code-inline">.skill</code> 後的目錄:</p>
+      <pre class="site-code"><code>markdown-plus-author/
+&#9500;&#9472;&#9472; SKILL.md                              # 唯一進入點;frontmatter 控觸發
+&#9500;&#9472;&#9472; references/                           # on-demand 載入的細節
+&#9474;   &#9500;&#9472;&#9472; what-is-markdown-plus.md          # 概念、實證數據
+&#9474;   &#9500;&#9472;&#9472; syntax-reference.md               # 完整語法 + ```svg/```mermaid + auto keywords
+&#9474;   &#9500;&#9472;&#9472; metadata-vocabulary.md            # closed vocab + `keywords:` 規則
+&#9474;   &#9500;&#9472;&#9472; rewriting-playbook.md             # md &rarr; mdp,html &rarr; mdp 改寫程序
+&#9474;   &#9500;&#9472;&#9472; code-fence-preservation.md        # 保留 ASCII tree / DSL fence 的 hard rule
+&#9474;   &#9500;&#9472;&#9472; worked-examples.md                # 前後對照(good / bad)
+&#9474;   &#9492;&#9472;&#9472; quality_checklist.md              # 出貨前最後一關
+&#9492;&#9472;&#9472; assets/
+    &#9492;&#9472;&#9472; evals/
+        &#9500;&#9472;&#9472; evals.json                    # trigger + functional + abuse + multilingual
+        &#9492;&#9472;&#9472; regression_gates.json         # 釋出前須過的 must-pass + 時/token 上限</code></pre>
 
-<!-- ===== 30 sec example: side-by-side ===== -->
-<section class="band">
-  <div class="band-inner">
-    <h2 style="text-align:center;">長什麼樣 — 30 秒範例</h2>
-    <p style="text-align:center;color:var(--text-muted);margin-top:0;">同一份 source,左邊是純 markdown viewer 看到的,右邊是 Markdown+ viewer 渲染。</p>
-    <div class="example-split">
-      <div>
-        <div class="example-label">Source (純 markdown viewer)</div>
-        <pre class="site-code" style="margin-top:0;"><code>- **#current-state** `type:state` `status:active`
-  目前 Auth v2 在 production 運作。
+      <h3>SKILL.md 的角色</h3>
+      <p>
+        SKILL.md 是 Claude 看到的<strong>唯一入口</strong>。Frontmatter 的
+        <code class="site-code-inline">description</code> 欄位決定整個 skill 是否在對話中被啟用——
+        所以它精確列出觸發場景(dev note / decision record / 改寫 HTML…)
+        與排除場景(投影片 / 短信件 / 一次性短回覆)。
+      </p>
+      <p>
+        正文以結構化 XML-like tag 分區:
+        <code class="site-code-inline">&lt;role&gt;</code> /
+        <code class="site-code-inline">&lt;decision_boundary&gt;</code> /
+        <code class="site-code-inline">&lt;spirit&gt;</code> /
+        <code class="site-code-inline">&lt;workflow&gt;</code> /
+        <code class="site-code-inline">&lt;output_contract&gt;</code> /
+        <code class="site-code-inline">&lt;default_follow_through_policy&gt;</code> /
+        <code class="site-code-inline">&lt;viewer_features&gt;</code> /
+        <code class="site-code-inline">&lt;references&gt;</code>。
+        Claude 不會把整份 references 載入記憶體,而是在 workflow Step 標明
+        <em>Load on demand</em> 時才讀對應檔案。
+      </p>
+    </section>
 
-- **#sla-kpi** `type:kpi` `metric:API_SLA`
-   `value:99.92` `target:99.95`
-  API SLA 99.92%,目標 99.95%。
+    <section id="references-walkthrough">
+      <h2>references/ &mdash; 七個檔各管什麼</h2>
+      <table class="site-table">
+        <thead><tr><th>檔名</th><th>何時載入</th><th>內容重點</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="site-code-inline">what-is-markdown-plus.md</code></td>
+            <td>使用者問「Markdown+ 是什麼」「為什麼用這格式」</td>
+            <td>本體 vs 投影論點、graceful degradation、empirical token-cost 數據</td>
+          </tr>
+          <tr>
+            <td><code class="site-code-inline">syntax-reference.md</code></td>
+            <td>每次撰寫前快速查語法</td>
+            <td>block header / metadata / 巢狀 / caption / dialogue / variants /
+              <code class="site-code-inline">```svg</code> /
+              <code class="site-code-inline">```mermaid</code> fence + 16 KB 閾值 /
+              無辭典 keyword 抽取演算法</td>
+          </tr>
+          <tr>
+            <td><code class="site-code-inline">metadata-vocabulary.md</code></td>
+            <td>賦予 metadata 時必載入</td>
+            <td>受控 <code class="site-code-inline">type:</code> /
+              <code class="site-code-inline">status:</code> /
+              <code class="site-code-inline">trend:</code> 字彙表、key 全清單、Discoverability(<code class="site-code-inline">keywords:</code>)</td>
+          </tr>
+          <tr>
+            <td><code class="site-code-inline">rewriting-playbook.md</code></td>
+            <td>輸入是 markdown 或 HTML 要改寫時</td>
+            <td>剝 <code class="site-code-inline">&lt;script&gt;</code> / 移除 base64 / 拆 chart spec / 對齊巢狀</td>
+          </tr>
+          <tr>
+            <td><code class="site-code-inline">code-fence-preservation.md</code></td>
+            <td>輸入內含 code fence / ASCII 樹 / 對齊表格時</td>
+            <td>「逐字保留」hard rule,含 svg / mermaid / vega-lite 等 DSL fence 處理</td>
+          </tr>
+          <tr>
+            <td><code class="site-code-inline">worked-examples.md</code></td>
+            <td>範例可澄清要求時</td>
+            <td>before/after 與 good/bad 對照(decision record / dashboard / dialogue / variants)</td>
+          </tr>
+          <tr>
+            <td><code class="site-code-inline">quality_checklist.md</code></td>
+            <td>輸出前必過</td>
+            <td>20+ 項 hard rule:每 block 有 type、無 base64、caption 無 hardcoded 編號 ...</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
 
-- **#auth-v1** `type:history`
-   `status:deprecated`
-   `visibility:collapsed`
-  Auth v1 把 token 直接放 cookie。</code></pre>
-      </div>
-      <div>
-        <div class="example-label">Rendered (Markdown+ viewer)</div>
-        <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-4); margin-top:0;">
-          <div style="margin-bottom:var(--sp-3); padding:var(--sp-3); border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg-subtle);">
-            <div style="font-weight:600; margin-bottom:4px;">Current State <span class="mock-pill ok" style="display:inline-block;padding:1px 8px;font-size:10px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-weight:600;text-transform:uppercase;">Active</span></div>
-            <div style="font-size:13px;color:var(--text-muted);">目前 Auth v2 在 production 運作。</div>
-          </div>
-          <div style="margin-bottom:var(--sp-3); padding:var(--sp-3); border:1px solid var(--accent); border-radius:var(--r-sm); background:var(--accent-soft);">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">API SLA</div>
-            <div style="font-size:28px;font-weight:700;color:var(--accent-deep);line-height:1.1;">99.92<span style="font-size:14px;color:var(--text-muted);"> %</span></div>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Target 99.95% · <span style="color:var(--warn);font-weight:600;">−0.03</span></div>
-          </div>
-          <div style="padding:var(--sp-2) var(--sp-3); border:1px solid var(--border); border-radius:var(--r-sm); opacity:0.6; font-size:13px;">
-            <span style="color:var(--text-muted);">▸ Auth v1 (deprecated)</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+    <section id="evals">
+      <h2>assets/evals/ &mdash; 觸發測試與回歸閘門</h2>
+      <p>
+        如果你要二次開發或基於本 skill 改造,<code class="site-code-inline">assets/evals/</code> 提供現成的測試集:
+      </p>
+      <ul>
+        <li>
+          <code class="site-code-inline">evals.json</code> &mdash; 三類測試:
+          <ul>
+            <li><strong>trigger</strong> &mdash; should / shouldnot / near-miss:確認哪些敘述會喚起、哪些不會</li>
+            <li><strong>functional</strong> &mdash; Given/When/Then:固定輸入是否產生符合 output contract 的輸出</li>
+            <li><strong>edge &amp; abuse</strong> &mdash; 含 prompt injection、secret leak、多語言混雜</li>
+          </ul>
+        </li>
+        <li>
+          <code class="site-code-inline">regression_gates.json</code> &mdash; 釋出版本的最低標準:必過 case、
+          時間 / token 上限、pass rate 不可比上一版降超過多少。
+        </li>
+      </ul>
+      <p>
+        搭配
+        <a href="https://github.com/anthropics/skills/tree/main/anthropic-skills/skill-creator-advanced" target="_blank" rel="noopener">
+          <code class="site-code-inline">skill-creator-advanced</code></a>
+        的 <code class="site-code-inline">run_eval.py</code> 與
+        <code class="site-code-inline">check_regression_gates.py</code> 就能跑完整 audit。
+      </p>
+    </section>
 
-<!-- ===== Solves what: tinted with feature grid ===== -->
-<section class="band band-tinted">
-  <div class="band-inner">
-    <h2 style="text-align:center;">它解決了什麼</h2>
-    <div class="feature-grid">
-      <div class="feature-card">
-        <h3>精準讀取</h3>
-        <p>AI 不再要按行掃整檔。可以 <code class="site-code-inline">list_blocks()</code> → <code class="site-code-inline">read_block(id)</code> 精準讀取。</p>
-      </div>
-      <div class="feature-card">
-        <h3>歷史不污染現況</h3>
-        <p>歷史內容預設摺疊,AI 不會誤把已棄用內容當現況,人類也看得清楚。</p>
-      </div>
-      <div class="feature-card">
-        <h3>Token 友善</h3>
-        <p>metadata 約 10 tokens vs HTML card 200+ tokens。差距在大文件上會放大幾個數量級。</p>
-      </div>
-      <div class="feature-card">
-        <h3>工具鏈相容</h3>
-        <p>GitHub diff、grep、IDE preview 都正常 — 因為 source 仍是合法 CommonMark。</p>
-      </div>
-      <div class="feature-card">
-        <h3>視覺由 viewer 推導</h3>
-        <p>nav、卡片、gauge、callout 全由 metadata 自動推導,作者不寫 CSS 與 HTML。</p>
-      </div>
-      <div class="feature-card">
-        <h3>受控字彙</h3>
-        <p><code class="site-code-inline">type:</code> / <code class="site-code-inline">status:</code> 為 closed list,viewer 才能穩定渲染、AI 才好 routing。</p>
-      </div>
-    </div>
-  </div>
-</section>
+    <section id="rebuild">
+      <h2>從 source 重新打包</h2>
+      <p>改完 <code class="site-code-inline">skills/markdown-plus-author/</code> 內任何檔後,從 repo root 跑:</p>
+      <pre class="site-code"><code>cd skills &amp;&amp; python -c "
+import zipfile, os
+src = 'markdown-plus-author'
+out = '../public/markdown-plus-author.skill'
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, _, files in os.walk(src):
+        for f in files:
+            zf.write(os.path.join(root, f),
+                     os.path.join(root, f).replace(os.sep, '/'))
+"</code></pre>
+      <p>
+        產出的 <code class="site-code-inline">public/markdown-plus-author.skill</code>
+        就是這頁下載連結指向的檔案。Round-trip 驗證:
+      </p>
+      <pre class="site-code"><code>mkdir /tmp/check &amp;&amp; cd /tmp/check
+python -c "import zipfile; zipfile.ZipFile('public/markdown-plus-author.skill').extractall('.')"
+diff -r skills/markdown-plus-author /tmp/check/markdown-plus-author   # 應該 CLEAN</code></pre>
+    </section>
 
-<!-- ===== Final CTA: accent band ===== -->
-<section class="band band-accent">
-  <div class="band-inner band-tight">
-    <h2 style="font-size:32px; margin:0 0 var(--sp-3);">準備好試試了嗎?</h2>
-    <p style="font-size:17px; margin:0 0 var(--sp-5); opacity:0.92;">
-      Playground 預設載入一份涵蓋所有元素的 33-block 範例。改一改、看一看。
-    </p>
-    <a class="site-btn" href="./playground.html">立即開啟 Playground →</a>
-  </div>
-</section>
+    </article>
+</div>
 
 <footer class="site-footer">
   <span class="footer-mark">Markdown+</span> — graceful Markdown for both AI and humans.
 </footer>
 
+<script>
+  // Sidebar scroll-spy
+  (function () {
+    const links = document.querySelectorAll(".docs-sidebar a[href^='#']");
+    const targets = Array.from(links).map(a => ({
+      link: a,
+      el: document.querySelector(a.getAttribute("href"))
+    })).filter(t => t.el);
+    function update() {
+      const y = window.scrollY + 90;
+      let active = null;
+      for (const t of targets) {
+        if (t.el.offsetTop <= y) active = t;
+      }
+      for (const t of targets) t.link.classList.toggle("active", t === active);
+    }
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  })();
+</script>
 </body>
 </html>
