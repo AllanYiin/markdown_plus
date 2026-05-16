@@ -206,6 +206,7 @@ body {
 .msg-assistant .msg-body {
   background: var(--surface);
   border: 1px solid var(--border);
+  white-space: normal;          /* rendered markdown, not pre-wrap */
 }
 .msg-assistant .msg-body code {
   background: var(--surface-2);
@@ -217,6 +218,36 @@ body {
 .msg-assistant .msg-body a {
   color: var(--accent); text-decoration: underline;
 }
+.msg-assistant .msg-body p { margin: 0 0 8px; }
+.msg-assistant .msg-body p:last-child { margin-bottom: 0; }
+.msg-assistant .msg-body ul,
+.msg-assistant .msg-body ol { margin: 6px 0; padding-left: 22px; }
+.msg-assistant .msg-body li { margin: 2px 0; }
+.msg-assistant .msg-body strong { font-weight: 600; }
+.msg-assistant .msg-body em { font-style: italic; }
+.msg-assistant .msg-body h2,
+.msg-assistant .msg-body h3,
+.msg-assistant .msg-body h4 {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.msg-assistant .msg-body pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  overflow-x: auto;
+  font-size: 12.5px;
+  margin: 8px 0;
+}
+.msg-assistant .msg-body pre code { background: none; padding: 0; color: inherit; }
+.msg-assistant .msg-body blockquote {
+  border-left: 3px solid var(--border-strong);
+  margin: 8px 0;
+  padding: 2px 12px;
+  color: var(--text-muted);
+}
 
 /* --- Tool call / result cards (collapsible) --- */
 .tool-card {
@@ -226,25 +257,34 @@ body {
   border-radius: var(--r-md);
   background: var(--surface-2);
   font-size: 12px;
-  overflow: hidden;
+  /* NEVER use overflow:hidden here — Chromium clips the whole <details> down
+     to 1px when summary uses display:list-item (the default). Round corners
+     on inner pieces instead. */
 }
 .tool-card.tool-card-result { border-left-color: var(--ok); }
 .tool-card.tool-card-result.err { border-left-color: var(--err); }
+/* IMPORTANT: do NOT put display:flex directly on <summary>. Chromium has a
+   long-standing bug where <details overflow:hidden> + <summary display:flex>
+   collapses the details element's height to ~1px even though the summary
+   itself measures correctly. Use a child <span class="tool-summary-row"> as
+   the flex container instead. */
 .tool-card summary {
   cursor: pointer;
   list-style: none;
   padding: 6px 10px;
-  display: flex; align-items: center; gap: var(--sp-2);
   font-family: var(--font-mono);
   color: var(--text);
   user-select: none;
 }
 .tool-card summary::-webkit-details-marker { display: none; }
-.tool-card summary::before {
+.tool-card .tool-summary-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+}
+.tool-card .tool-summary-row::before {
   content: "▸"; transition: transform var(--t-fast);
   flex-shrink: 0; color: var(--text-faint);
 }
-.tool-card[open] summary::before { transform: rotate(90deg); }
+.tool-card[open] .tool-summary-row::before { transform: rotate(90deg); }
 .tool-card .tool-kind {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--accent-2); font-weight: 700;
@@ -268,7 +308,11 @@ body {
   max-height: 320px;
   overflow-y: auto;
   border-top: 1px solid var(--surface-3);
+  border-radius: 0 0 var(--r-md) var(--r-md);  /* bottom-corner round, body is at bottom */
 }
+/* Belt-and-suspenders: some browsers (with display:flex on <summary>) misbehave
+   on reflow and momentarily show body when <details> is closed. Force hide. */
+.tool-card:not([open]) > .tool-body { display: none !important; }
 .tool-card .tool-body .json-key { color: #c4b5fd; }
 .tool-card .tool-body .json-str { color: #86efac; }
 .tool-card .tool-body .json-num { color: #fbbf24; }
@@ -439,6 +483,115 @@ body {
       .replace(/:\s*(-?\d+(?:\.\d+)?)/g, ': <span class="json-num">$1</span>');
   }
 
+  // ---- Minimal markdown renderer for the assistant message body.
+  // Handles: headings, ``` fences, **bold**, *italic*, `code`, links, ordered/
+  // unordered lists, blockquotes, paragraphs. Designed to be safe (esc first,
+  // then apply transforms). Not a full CommonMark parser — just enough so the
+  // LLM's response (with `**id**` block refs) reads as proper text.
+  function renderInlineMd(s) {
+    let out = esc(s);
+    // Inline code first (lock its content from other transforms)
+    const codeChunks = [];
+    out = out.replace(/`([^`]+)`/g, (_, c) => {
+      codeChunks.push(c);
+      return ` CODE${codeChunks.length - 1} `;
+    });
+    // Links [text](url)
+    out = out.replace(/\[([^\]]+)\]\((https?:[^\s)]+|\.{0,2}\/[^\s)]+|#[^\s)]+)\)/g,
+      (_, t, u) => `<a href="${u}">${t}</a>`);
+    out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/(?<!\*)\*([^*\s][^*]*?)\*(?!\*)/g, "<em>$1</em>");
+    // Restore inline code
+    out = out.replace(/ CODE(\d+) /g, (_, i) => `<code>${codeChunks[Number(i)]}</code>`);
+    return out;
+  }
+
+  function renderMarkdown(text) {
+    const lines = String(text).split(/\r?\n/);
+    const out = [];
+    let i = 0;
+    let para = [];
+    const flushPara = () => {
+      if (para.length) {
+        out.push("<p>" + renderInlineMd(para.join(" ")) + "</p>");
+        para = [];
+      }
+    };
+    while (i < lines.length) {
+      const raw = lines[i];
+      const line = raw.trimEnd();
+      // Code fence
+      const fm = line.match(/^[ \t]*```(\w*)\s*$/);
+      if (fm) {
+        flushPara();
+        const lang = fm[1] || "";
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^[ \t]*```/.test(lines[i])) {
+          buf.push(lines[i]);
+          i++;
+        }
+        i++; // skip closing fence
+        const cls = lang ? ` class="language-${esc(lang)}"` : "";
+        out.push(`<pre><code${cls}>${esc(buf.join("\n"))}</code></pre>`);
+        continue;
+      }
+      // Heading
+      const hm = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (hm) {
+        flushPara();
+        const lv = Math.min(hm[1].length + 1, 6);  // demote h1→h2 etc.
+        out.push(`<h${lv}>${renderInlineMd(hm[2])}</h${lv}>`);
+        i++;
+        continue;
+      }
+      // Blockquote
+      if (/^\s*>\s?/.test(line)) {
+        flushPara();
+        const ql = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+          ql.push(lines[i].replace(/^\s*>\s?/, ""));
+          i++;
+        }
+        out.push("<blockquote>" + renderInlineMd(ql.join(" ")) + "</blockquote>");
+        continue;
+      }
+      // Unordered list
+      if (/^\s*[-*]\s+/.test(line)) {
+        flushPara();
+        const items = [];
+        while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
+          i++;
+        }
+        out.push("<ul>" + items.map(it => "<li>" + renderInlineMd(it) + "</li>").join("") + "</ul>");
+        continue;
+      }
+      // Ordered list
+      if (/^\s*\d+\.\s+/.test(line)) {
+        flushPara();
+        const items = [];
+        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*\d+\.\s+/, ""));
+          i++;
+        }
+        out.push("<ol>" + items.map(it => "<li>" + renderInlineMd(it) + "</li>").join("") + "</ol>");
+        continue;
+      }
+      // Blank line
+      if (!line.trim()) {
+        flushPara();
+        i++;
+        continue;
+      }
+      // Paragraph line
+      para.push(line);
+      i++;
+    }
+    flushPara();
+    return out.join("");
+  }
+
   // ---- Doc handling ----
   function updateDocStats() {
     const text = docSource.value;
@@ -555,11 +708,14 @@ body {
     const argsInline = shortJsonInline(args);
     const det = document.createElement("details");
     det.className = "tool-card";
+    det.open = false;  // defensive — default already closed
     det.innerHTML = `
       <summary>
-        <span class="tool-kind">CALL</span>
-        <span class="tool-name">${esc(name)}</span>
-        <span class="tool-args-inline">${esc(argsInline)}</span>
+        <span class="tool-summary-row">
+          <span class="tool-kind">CALL</span>
+          <span class="tool-name">${esc(name)}</span>
+          <span class="tool-args-inline">${esc(argsInline)}</span>
+        </span>
       </summary>
       <div class="tool-body">${formatPrettyJsonHtml(args)}</div>
     `;
@@ -576,11 +732,14 @@ body {
       : (result && result.error ? `error: ${result.error}` : "error");
     const det = document.createElement("details");
     det.className = "tool-card tool-card-result" + (ok ? "" : " err");
+    det.open = false;
     det.innerHTML = `
       <summary>
-        <span class="tool-kind">${ok ? "RESULT" : "ERROR"}</span>
-        <span class="tool-name">${esc(name)}</span>
-        <span class="tool-args-inline">${esc(summary)}</span>
+        <span class="tool-summary-row">
+          <span class="tool-kind">${ok ? "RESULT" : "ERROR"}</span>
+          <span class="tool-name">${esc(name || "")}</span>
+          <span class="tool-args-inline">${esc(summary)}</span>
+        </span>
       </summary>
       <div class="tool-body">${formatPrettyJsonHtml(result)}</div>
     `;
@@ -674,7 +833,9 @@ body {
           } else if (msg.type === "delta") {
             if (!assistantBody) assistantBody = addAssistantMessage();
             assistantBuf += msg.delta;
-            assistantBody.textContent = assistantBuf;
+            // Render as markdown so **bold**, lists, `code`, ``` fences look proper.
+            // Done on every delta tick — for typical chat-size answers this is cheap.
+            assistantBody.innerHTML = renderMarkdown(assistantBuf);
             scrollToBottom();
           } else if (msg.type === "done") {
             const elapsed = ((performance.now() - t0) / 1000).toFixed(1);

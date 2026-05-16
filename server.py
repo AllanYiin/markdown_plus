@@ -596,6 +596,7 @@ class Handler(SimpleHTTPRequestHandler):
                         write_ndjson({
                             "type": "tool_result",
                             "id": tc.id,
+                            "name": name,
                             "ok": not is_err,
                             "result": result,
                         })
