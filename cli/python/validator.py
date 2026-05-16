@@ -194,11 +194,17 @@ def check_block(b: Block, ids_seen: set[str]) -> list[Issue]:
         issues.append(Issue("warning", b.line, "PRI-001",
                             f"block {b.id!r} has unknown priority {pri!r}", b.id))
 
-    # R-UPD-001: updated must be ISO date
+    # R-UPD-001: updated must be ISO 8601 date OR date+time
+    # Accepts:  YYYY-MM-DD
+    #           YYYY-MM-DD HH:MM[:SS]
+    #           YYYY-MM-DDTHH:MM[:SS][.fff][Z|±HH:MM]
     upd = b.metadata.get("updated")
-    if upd and upd != "unknown" and not re.match(r"^\d{4}-\d{2}-\d{2}$", upd):
+    if upd and upd != "unknown" and not re.match(
+        r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$",
+        upd,
+    ):
         issues.append(Issue("warning", b.line, "UPD-001",
-                            f"block {b.id!r} 'updated' {upd!r} is not ISO YYYY-MM-DD", b.id))
+                            f"block {b.id!r} 'updated' {upd!r} is not ISO 8601", b.id))
 
     # R-DEP-001: status:deprecated requires superseded-by
     if status in ("deprecated", "superseded"):
@@ -265,33 +271,46 @@ def check_global(blocks: list[Block], text: str) -> list[Issue]:
             issues.append(Issue("error", i, "FENCE-001",
                                 "':::' directive is not allowed in Markdown+"))
 
-    # R-HTML-001: no raw HTML tags except allowed
+    # R-HTML-001 / R-SVG-001: scan lines outside code fences, AFTER stripping inline
+    # `code` spans (so prose can legitimately reference `<script>` etc. in backticks).
+    forbidden_html = {"div", "span", "section", "article", "aside", "nav",
+                      "header", "footer", "script", "style", "svg", "video",
+                      "audio", "img", "table", "tr", "td", "th", "ul", "ol",
+                      "li", "p", "h1", "h2", "h3", "h4", "h5", "h6",
+                      "details", "summary", "figure", "figcaption"}
+    in_fence = False
+    fence_marker = ""
     for i, line in enumerate(text.splitlines(), 1):
-        # Skip code fences (rough — full skip handled by parser; this is a sanity sweep)
-        for tag_match in re.finditer(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9]*)\b", line):
-            tag = tag_match.group(1).lower()
-            if tag not in ALLOWED_RAW_HTML_TAGS and tag not in {"a", "code", "em", "strong"}:
-                # Be lenient about inline tags <a>, <code>, <em>, <strong> which Markdown also produces
-                # but flag the typical HTML wrappers.
-                if tag in {"div", "span", "section", "article", "aside", "nav",
-                           "header", "footer", "script", "style", "svg", "video",
-                           "audio", "img", "table", "tr", "td", "th", "ul", "ol",
-                           "li", "p", "h1", "h2", "h3", "h4", "h5", "h6",
-                           "details", "summary", "figure", "figcaption"}:
-                    issues.append(Issue("error", i, "HTML-001",
-                                        f"raw HTML tag <{tag}> not allowed in Markdown+ source"))
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            m = stripped[:3]
+            if not in_fence:
+                in_fence = True
+                fence_marker = m
+            elif stripped.startswith(fence_marker):
+                in_fence = False
+                fence_marker = ""
+            continue
+        if in_fence:
+            continue
 
-    # R-BASE64-001: no inline base64
+        line_for_html = re.sub(r"`[^`]*`", " ", line)
+
+        for tag_match in re.finditer(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9]*)\b", line_for_html):
+            tag = tag_match.group(1).lower()
+            if tag in forbidden_html:
+                issues.append(Issue("error", i, "HTML-001",
+                                    f"raw HTML tag <{tag}> not allowed in Markdown+ source"))
+
+        if re.search(r"<\s*svg\b", line_for_html, re.IGNORECASE):
+            issues.append(Issue("error", i, "SVG-001",
+                                "inline <svg> not allowed (wrap in ```svg fence or use ![alt](./file.svg))"))
+
+    # R-BASE64-001: no inline base64 (independent of inline-code; base64 in prose is still suspect)
     for i, line in enumerate(text.splitlines(), 1):
         if re.search(r"data:[a-z]+/[a-z+.-]+;base64,", line, re.IGNORECASE):
             issues.append(Issue("error", i, "BASE64-001",
                                 "inline base64 / data URI not allowed (use relative file path)"))
-
-    # R-SVG-INLINE-001: no inline <svg>
-    for i, line in enumerate(text.splitlines(), 1):
-        if re.search(r"<\s*svg\b", line, re.IGNORECASE):
-            issues.append(Issue("error", i, "SVG-001",
-                                "inline <svg> not allowed (use ![alt](./path.svg))"))
 
     # R-PROSE-001: figure/table/chart/kpi/gauge blocks must have prose companion
     for b in blocks:

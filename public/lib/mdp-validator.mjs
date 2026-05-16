@@ -118,8 +118,9 @@ export function validate(text) {
       issues.push({severity:"warning",line:b.line,code:"VIS-001",blockId:b.id,message:`unknown visibility '${vis}'`});
 
     const upd = b.metadata.updated;
-    if (upd && upd !== "unknown" && !/^\d{4}-\d{2}-\d{2}$/.test(upd))
-      issues.push({severity:"warning",line:b.line,code:"UPD-001",blockId:b.id,message:`updated '${upd}' not ISO`});
+    // Accept ISO 8601: date or date+time (with optional T separator, seconds, fraction, zone).
+    if (upd && upd !== "unknown" && !/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(upd))
+      issues.push({severity:"warning",line:b.line,code:"UPD-001",blockId:b.id,message:`updated '${upd}' not ISO 8601`});
 
     if ((status === "deprecated" || status === "superseded") && !b.metadata["superseded-by"])
       issues.push({severity:"error",line:b.line,code:"DEP-001",blockId:b.id,message:`status:${status} requires superseded-by`});
@@ -168,11 +169,15 @@ export function validate(text) {
     if (/data:[a-z]+\/[a-z+.-]+;base64,/i.test(line))
       issues.push({severity:"error",line:i+1,code:"BASE64-001",message:`inline base64 not allowed`});
 
-    if (/<\s*svg\b/i.test(line))
-      issues.push({severity:"error",line:i+1,code:"SVG-001",message:`inline <svg> not allowed`});
+    // Strip inline-code spans before scanning so prose can legitimately reference
+    // `<script>` / `<svg>` etc. inside backticks without tripping the rule.
+    const lineForHtmlScan = line.replace(/`[^`]*`/g, " ");
+
+    if (/<\s*svg\b/i.test(lineForHtmlScan))
+      issues.push({severity:"error",line:i+1,code:"SVG-001",message:`inline <svg> not allowed (wrap in \`\`\`svg fence or use ![alt](./file.svg))`});
 
     // raw HTML
-    const tagMatches = line.matchAll(/<\s*\/?\s*([a-zA-Z][a-zA-Z0-9]*)\b/g);
+    const tagMatches = lineForHtmlScan.matchAll(/<\s*\/?\s*([a-zA-Z][a-zA-Z0-9]*)\b/g);
     for (const tm of tagMatches) {
       const tag = tm[1].toLowerCase();
       if (FORBIDDEN_RAW_TAGS.has(tag))
