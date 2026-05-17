@@ -151,21 +151,41 @@ def _execute_mdp_tool(tool_name: str, raw_args: dict, doc_path: Path) -> object:
 
 
 def _extract_usage(resp) -> tuple[int, int, int]:
-    """Pull (prompt_tokens, cached_prompt_tokens, completion_tokens) out of an
-    OpenAI ChatCompletion response. `cached_tokens` lives under
-    usage.prompt_tokens_details.cached_tokens — populated whenever the chosen
-    model supports prompt caching (GPT-4o / 4.1 / 5 / o1 families all do),
-    auto-engaged for prompts ≥ 1024 tok with a matching prefix, 50% input
-    discount. Returns 0s if any field is missing (older models, non-OpenAI
-    backends, or sub-1024-tok prompts that don't trigger caching)."""
+    """Pull (input_tokens, cached_input_tokens, output_tokens) from an OpenAI
+    response. Handles both shapes:
+      - Responses API: usage.input_tokens / input_tokens_details.cached_tokens / output_tokens
+      - Chat Completions: usage.prompt_tokens / prompt_tokens_details.cached_tokens / completion_tokens
+    Cached tokens are populated whenever the chosen model supports prompt
+    caching (GPT-4o / 4.1 / 5 / o1 families all do), auto-engaged for
+    prompts ≥ 1024 tok with a matching prefix, 50% input discount."""
     usage = getattr(resp, "usage", None)
     if not usage:
         return 0, 0, 0
-    in_tok = int(getattr(usage, "prompt_tokens", 0) or 0)
-    out_tok = int(getattr(usage, "completion_tokens", 0) or 0)
-    details = getattr(usage, "prompt_tokens_details", None)
+    in_tok = int(getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0) or 0)
+    out_tok = int(getattr(usage, "output_tokens", 0) or getattr(usage, "completion_tokens", 0) or 0)
+    details = getattr(usage, "input_tokens_details", None) or getattr(usage, "prompt_tokens_details", None)
     cached = int(getattr(details, "cached_tokens", 0) or 0) if details else 0
     return in_tok, cached, out_tok
+
+
+def _to_responses_tools(tools_chat_fmt: list[dict]) -> list[dict]:
+    """Convert Chat Completions tool format (nested under "function": {...})
+    to the Responses API's flat format (name / description / parameters at the
+    top level alongside "type": "function"). The on-disk schema file stays in
+    Chat Completions shape — this adapter runs at request time."""
+    out: list[dict] = []
+    for t in tools_chat_fmt:
+        if t.get("type") != "function":
+            out.append(t)
+            continue
+        fn = t.get("function", {})
+        out.append({
+            "type": "function",
+            "name": fn.get("name"),
+            "description": fn.get("description"),
+            "parameters": fn.get("parameters", {}),
+        })
+    return out
 
 
 def build_prompt(kind: str, content: str) -> str:
@@ -480,13 +500,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.json_response(500, {"error": err["error"]})
 
     # ---- /api/chat — agent loop over Markdown+ document with mdp_* tools ----
-    # Body: {"doc": "<full Markdown+ source>", "messages": [{role, content}, ...]}
+    # Uses the OpenAI Responses API (same as /api/rewrite). After iter 1,
+    # subsequent iters chain via `previous_response_id` so only new
+    # function_call_output items go up — instructions, tools, manifest, and
+    # prior history all live on the OpenAI server keyed by response id.
+    # Body: {"doc": "<full Markdown+ source>", "mode": "blocks"|"plain",
+    #        "messages": [{role, content}, ...], "head_lines": int (plain only)}
     # Streams NDJSON with event types:
-    #   {type:"start", model, tools_loaded}
+    #   {type:"start", model, tools_loaded, mode, manifest_blocks?}
     #   {type:"iteration", n}
     #   {type:"tool_call", id, name, args}
     #   {type:"tool_result", id, ok, result|error}
-    #   {type:"delta", delta}           — assistant text chunks
+    #   {type:"delta", delta}           — assistant text (single chunk for now)
     #   {type:"done", iterations, tool_calls, input_tokens, cached_tokens, output_tokens}
     #   {type:"error", error}
     MAX_AGENT_ITERATIONS = 15
@@ -507,6 +532,11 @@ class Handler(SimpleHTTPRequestHandler):
         mode = data.get("mode", "blocks")
         if mode not in ("blocks", "plain"):
             return self.json_response(400, {"error": f"unknown mode: {mode!r}"})
+        # Cross-turn chain. Client passes back the response_id from the previous
+        # `done` event; we forward it to OpenAI as previous_response_id so the
+        # server reuses the stored instructions/manifest/prior-turn state and
+        # we only have to upload the new user message. None → fresh chain.
+        client_previous_response_id = (data.get("previous_response_id") or "").strip() or None
         if not doc.strip():
             return self.json_response(400, {"error": "doc is empty"})
         if not isinstance(history, list) or not history:
@@ -556,7 +586,7 @@ class Handler(SimpleHTTPRequestHandler):
 
             # ===== Plain Markdown baseline =====
             # No tools. The LLM gets only the first `head_lines` lines of the
-            # raw document inline in the system prompt and must answer from
+            # raw document inline in instructions and must answer from
             # whatever is visible there — this is the "no progressive disclosure"
             # contrast condition the project benchmarks against.
             if mode == "plain":
@@ -569,7 +599,7 @@ class Handler(SimpleHTTPRequestHandler):
                 truncated = len(doc_lines) > head_lines
                 head_text = "\n".join(doc_lines[:head_lines])
                 shown = min(len(doc_lines), head_lines)
-                plain_system = (
+                instructions = (
                     "You are answering questions about a Markdown document. "
                     "You have NO tools. The document below is shown to you as "
                     f"its first {shown} of {len(doc_lines)} lines"
@@ -580,8 +610,14 @@ class Handler(SimpleHTTPRequestHandler):
                     + "--- DOCUMENT (head only) ---\n"
                     + head_text
                 )
-                messages = [{"role": "system", "content": plain_system}]
-                messages.extend(history)
+                # Build `input` based on whether we're chaining. When we have
+                # a previous_response_id, OpenAI has the full prior history
+                # server-side, so the only NEW thing to send is the latest
+                # user message — everything else is already keyed by that id.
+                if client_previous_response_id:
+                    input_items = [{"role": "user", "content": history[-1]["content"]}]
+                else:
+                    input_items = [{"role": m["role"], "content": m["content"]} for m in history]
 
                 write_ndjson({
                     "type": "start",
@@ -591,13 +627,33 @@ class Handler(SimpleHTTPRequestHandler):
                     "head_lines": shown,
                     "total_lines": len(doc_lines),
                     "truncated": truncated,
+                    "chained": bool(client_previous_response_id),
                 })
 
-                resp = client.chat.completions.create(model=MODEL, messages=messages)
-                in_tok, cached_tok, out_tok = _extract_usage(resp)
-                final_text = (resp.choices[0].message.content or "")
-                if final_text:
-                    write_ndjson({"type": "delta", "delta": final_text})
+                # Stream the assistant text token-by-token (matches the
+                # rewriter pattern at /api/rewrite). Each token chunk is
+                # emitted as a `delta` NDJSON event so the UI can render
+                # incrementally instead of waiting for the whole reply.
+                stream_kwargs: dict = {"model": MODEL, "input": input_items}
+                if client_previous_response_id:
+                    # Chained — instructions already live on the server, don't re-send.
+                    stream_kwargs["previous_response_id"] = client_previous_response_id
+                else:
+                    # Fresh chain — ship instructions (system prompt + doc head).
+                    stream_kwargs["instructions"] = instructions
+
+                accumulated: list[str] = []
+                with client.responses.stream(**stream_kwargs) as stream:
+                    for event in stream:
+                        if getattr(event, "type", "") == "response.output_text.delta":
+                            delta = getattr(event, "delta", "") or ""
+                            if delta:
+                                accumulated.append(delta)
+                                write_ndjson({"type": "delta", "delta": delta})
+                    final = stream.get_final_response()
+
+                in_tok, cached_tok, out_tok = _extract_usage(final)
+                final_text = "".join(accumulated)
                 write_ndjson({
                     "type": "done",
                     "iterations": 1,
@@ -606,6 +662,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "cached_tokens": cached_tok,
                     "output_tokens": out_tok,
                     "final_text_len": len(final_text),
+                    "response_id": final.id,  # client passes this back next turn for chaining
                 })
                 return
 
@@ -614,10 +671,12 @@ class Handler(SimpleHTTPRequestHandler):
             # no body) into the system prompt. Two wins:
             #   (1) Sits inside the cacheable prefix → OpenAI prompt caching
             #       discounts it 50% on every iteration after the first.
-            #   (2) The LLM no longer needs an opening mdp_list_blocks call to
-            #       discover what's in the doc → saves ~1 round trip and the
-            #       full-manifest tool_result that would otherwise accumulate
-            #       across subsequent iterations.
+            #   (2) The LLM no longer needs mdp_list_blocks to discover the
+            #       document shape. We REMOVE mdp_list_blocks from the tool
+            #       list when manifest is preloaded — soft instructions in
+            #       the system prompt aren't enough; the model still calls
+            #       it "to be safe" if the schema is visible. Take away the
+            #       option entirely.
             try:
                 manifest = mdp_query.list_blocks(doc_path)
             except Exception:  # noqa: BLE001 — defensive: parse error shouldn't 500 the chat
@@ -627,34 +686,58 @@ class Handler(SimpleHTTPRequestHandler):
                 manifest_json = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
                 manifest_section = (
                     f"\n\n--- BLOCK MANIFEST ({len(manifest)} blocks, metadata only — no body) ---\n"
+                    "This is the COMPLETE current state of the document — every block is listed.\n"
                     "Each entry: {\"id\",\"type\",\"status\",\"title\",\"line\",\"keywords\"}\n"
                     f"{manifest_json}"
                 )
+                # Drop mdp_list_blocks from the offered tools so the model
+                # can't waste a round trip re-fetching what's already above.
+                tools_active = [
+                    t for t in tools
+                    if t.get("function", {}).get("name") != "mdp_list_blocks"
+                ]
             else:
                 manifest_section = ""
+                tools_active = tools
 
-            messages: list[dict] = [
-                {"role": "system", "content": (
-                    "You are answering questions about a Markdown+ document the user uploaded. "
-                    "The block manifest below lists EVERY block's metadata "
-                    "(id/type/status/title/line/keywords). Use it directly — do NOT call "
-                    "mdp_list_blocks unless you suspect the manifest is stale. Prefer "
-                    "mdp_search_blocks for keyword hits (it now returns body-context snippets, "
-                    "often enough to answer without reading the full block), and mdp_read_block "
-                    "only when you actually need full body text. "
-                    "Don't guess body content. Cite block ids in your answer "
-                    "(e.g. \"`#decision-canary` says ...\"). Keep answers concise unless asked otherwise."
-                    + manifest_section
-                )},
-            ]
-            messages.extend(history)
+            instructions = (
+                "You are answering questions about a Markdown+ document the user uploaded. "
+                "The block manifest below is the COMPLETE list of every block — "
+                "id, type, status, title, line, keywords. Treat it as authoritative; "
+                "you do NOT need to re-fetch it. "
+                "Pick the relevant block ids directly from it, then:\n"
+                "  • mdp_search_blocks for keyword hits (returns body-context snippets — "
+                "often enough to answer without reading the full block)\n"
+                "  • mdp_read_block only when you actually need the full body text\n"
+                "Issue tool calls in parallel when you can. Cite block ids in your answer "
+                "(e.g. \"`#decision-canary` says ...\"). Keep answers concise unless asked otherwise."
+                + manifest_section
+            )
+            responses_tools = _to_responses_tools(tools_active)
+            # Build the iter-1 input. When we're chaining from a prior turn,
+            # OpenAI already has instructions/manifest/history server-side, so
+            # the ONLY new thing is this turn's user message. When we're not
+            # chaining, ship the full user/assistant history.
+            if client_previous_response_id:
+                input_items: list[dict] = [
+                    {"role": "user", "content": history[-1]["content"]}
+                ]
+            else:
+                input_items = [
+                    {"role": m["role"], "content": m["content"]} for m in history
+                ]
+            # Within-turn iteration chain — seeded from the cross-turn id so
+            # iter 1 starts already chained when chaining; later iters chain
+            # to their own previous iteration.
+            previous_response_id: str | None = client_previous_response_id
 
             write_ndjson({
                 "type": "start",
                 "model": MODEL,
-                "tools_loaded": len(tools),
+                "tools_loaded": len(tools_active),
                 "mode": "blocks",
                 "manifest_blocks": len(manifest) if manifest else 0,
+                "chained": bool(client_previous_response_id),
             })
 
             total_tool_calls = 0
@@ -665,67 +748,84 @@ class Handler(SimpleHTTPRequestHandler):
             for it in range(1, self.MAX_AGENT_ITERATIONS + 1):
                 write_ndjson({"type": "iteration", "n": it})
 
-                resp = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                )
-                in_tok, cached_tok, out_tok = _extract_usage(resp)
+                stream_kwargs: dict = {
+                    "model": MODEL,
+                    "tools": responses_tools,
+                    "parallel_tool_calls": True,
+                    "input": input_items,
+                }
+                if previous_response_id is None:
+                    # Fresh chain, iter 1 — ship instructions (system prompt +
+                    # preloaded manifest) and the full user/assistant history.
+                    # OpenAI server stores everything so later iters and later
+                    # turns can chain via previous_response_id.
+                    stream_kwargs["instructions"] = instructions
+                else:
+                    # Chained — only the new items (latest user msg on a
+                    # cross-turn chain, or function_call_output items on
+                    # within-turn iter 2+) go up. Instructions/tools/manifest/
+                    # prior history all live on the server keyed by id. This is
+                    # the key win over chat.completions, where every iteration
+                    # would re-send the whole accumulating history.
+                    stream_kwargs["previous_response_id"] = previous_response_id
+
+                # Stream the iteration. Text deltas (the final assistant answer
+                # when the model decides it's done) are forwarded to the UI
+                # token-by-token; function_calls are picked out of the final
+                # response object after the stream closes.
+                iter_text_chunks: list[str] = []
+                with client.responses.stream(**stream_kwargs) as stream:
+                    for event in stream:
+                        if getattr(event, "type", "") == "response.output_text.delta":
+                            delta = getattr(event, "delta", "") or ""
+                            if delta:
+                                iter_text_chunks.append(delta)
+                                write_ndjson({"type": "delta", "delta": delta})
+                    final = stream.get_final_response()
+
+                in_tok, cached_tok, out_tok = _extract_usage(final)
                 total_input_tokens += in_tok
                 total_cached_tokens += cached_tok
                 total_output_tokens += out_tok
+                previous_response_id = final.id
 
-                msg = resp.choices[0].message
-                tool_calls = getattr(msg, "tool_calls", None) or []
+                pending_calls = [
+                    item for item in (getattr(final, "output", None) or [])
+                    if getattr(item, "type", "") == "function_call"
+                ]
 
-                if tool_calls:
-                    # Append assistant turn that requested the tools
-                    messages.append({
-                        "role": "assistant",
-                        "content": msg.content or "",
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            } for tc in tool_calls
-                        ],
-                    })
-                    for tc in tool_calls:
+                if pending_calls:
+                    next_input: list[dict] = []
+                    for call in pending_calls:
                         total_tool_calls += 1
-                        name = tc.function.name
+                        name = call.name
                         try:
-                            args = json.loads(tc.function.arguments or "{}")
+                            args = json.loads(call.arguments or "{}")
                         except json.JSONDecodeError as e:
-                            args = {"_parse_error": str(e), "_raw": tc.function.arguments}
-                        write_ndjson({"type": "tool_call", "id": tc.id, "name": name, "args": args})
+                            args = {"_parse_error": str(e), "_raw": call.arguments}
+                        write_ndjson({
+                            "type": "tool_call", "id": call.call_id,
+                            "name": name, "args": args,
+                        })
 
                         result = _execute_mdp_tool(name, args, doc_path)
-                        # NDJSON-safe: result may be list/dict/scalar
                         is_err = isinstance(result, dict) and "error" in result
                         write_ndjson({
-                            "type": "tool_result",
-                            "id": tc.id,
-                            "name": name,
-                            "ok": not is_err,
-                            "result": result,
+                            "type": "tool_result", "id": call.call_id,
+                            "name": name, "ok": not is_err, "result": result,
                         })
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                        next_input.append({
+                            "type": "function_call_output",
+                            "call_id": call.call_id,
+                            "output": json.dumps(result, ensure_ascii=False, default=str),
                         })
-                    continue  # loop with tool results in context
+                    input_items = next_input
+                    continue  # next iter sends just these outputs
 
-                # Final assistant text
-                final_text = msg.content or ""
-                if final_text:
-                    # Emit in one chunk; chat.completions wasn't streamed.
-                    write_ndjson({"type": "delta", "delta": final_text})
+                # No more tool calls — final text already streamed above. We
+                # just need to emit the done event with usage totals + the
+                # response_id so the client can chain the next turn.
+                final_text = "".join(iter_text_chunks)
                 write_ndjson({
                     "type": "done",
                     "iterations": it,
@@ -734,6 +834,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "cached_tokens": total_cached_tokens,
                     "output_tokens": total_output_tokens,
                     "final_text_len": len(final_text),
+                    "response_id": previous_response_id,
                 })
                 return
 

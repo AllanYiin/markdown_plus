@@ -540,21 +540,34 @@ body {
   const plainControls = document.getElementById("plain-controls");
 
   // Per-mode state. Both tabs share the same loaded document and same input
-  // box; their conversation history, message DOM, and status line are kept
-  // independent so users can run the same question through both pipelines and
-  // compare side by side without one polluting the other.
+  // box; their conversation history, message DOM, status line, and Responses-
+  // API chain state are kept independent so users can run the same question
+  // through both pipelines and compare side by side without one polluting the
+  // other.
+  //
+  // `lastResponseId` is the chain head — set from each `done` event's
+  // response_id, sent back as `previous_response_id` on the next turn so the
+  // OpenAI server can reuse stored instructions/manifest/history.
+  // `session` is the running cumulative token total across all turns of this
+  // tab, shown after the per-turn stats so the user sees the conversation's
+  // total cost grow over time.
+  function newSession() { return { in: 0, cached: 0, out: 0, tool_calls: 0 }; }
   const MODES = {
     blocks: {
       messagesEl: document.getElementById("messages-blocks"),
       statusEl: document.getElementById("status-blocks"),
       panelEl: document.getElementById("panel-blocks"),
       history: [],
+      lastResponseId: null,
+      session: newSession(),
     },
     plain: {
       messagesEl: document.getElementById("messages-plain"),
       statusEl: document.getElementById("status-plain"),
       panelEl: document.getElementById("panel-plain"),
       history: [],
+      lastResponseId: null,
+      session: newSession(),
     },
   };
   let currentMode = "blocks";
@@ -867,6 +880,11 @@ body {
   function resetConversation() {
     const m = getMode();
     m.history = [];
+    // Reset the chain head so the next turn starts a fresh response chain
+    // (the previous one will eventually expire on OpenAI's side; we drop our
+    // reference now). Also reset the cumulative session totals.
+    m.lastResponseId = null;
+    m.session = newSession();
     const isPlain = currentMode === "plain";
     m.messagesEl.innerHTML = `
       <div class="placeholder-card">
@@ -929,7 +947,12 @@ body {
     // Body shape differs by mode — `mode:"plain"` skips the tool loop and
     // tells the server to feed only the first `head_lines` lines of the doc
     // as the LLM's entire view of the document.
+    // `previous_response_id` chains this turn to the prior turn's final
+    // response — server uses it as Responses API previous_response_id so it
+    // can reuse stored instructions/manifest/history and we only upload the
+    // new user message instead of the full conversation.
     const body = { mode, doc: docSource.value, messages: m.history };
+    if (m.lastResponseId) body.previous_response_id = m.lastResponseId;
     if (mode === "plain") {
       body.head_lines = Math.max(10, parseInt(headLinesInput.value, 10) || 200);
     }
@@ -1000,6 +1023,17 @@ body {
             m.messagesEl.scrollTop = m.messagesEl.scrollHeight;
           } else if (msg.type === "done") {
             const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            // Capture the response_id so the next turn can chain — this is
+            // what makes server-side state work across turns. Server may omit
+            // it on error or older code paths; we only update on a real value.
+            if (msg.response_id) m.lastResponseId = msg.response_id;
+            // Accumulate cumulative session totals BEFORE building the status
+            // line so the "累計" section reflects this turn included.
+            if (typeof msg.input_tokens === "number") m.session.in += msg.input_tokens;
+            if (typeof msg.cached_tokens === "number") m.session.cached += msg.cached_tokens;
+            if (typeof msg.output_tokens === "number") m.session.out += msg.output_tokens;
+            if (typeof msg.tool_calls === "number") m.session.tool_calls += msg.tool_calls;
+
             const parts = [`完成 · ${elapsed}s`];
             if (msg.iterations) parts.push(`${msg.iterations} iter`);
             if (typeof msg.tool_calls === "number") parts.push(`${msg.tool_calls} tool calls`);
@@ -1016,6 +1050,16 @@ body {
               }
             }
             if (typeof msg.output_tokens === "number") parts.push(`out ${msg.output_tokens} tok`);
+
+            // Cumulative session totals — shown after the per-turn stats so
+            // users can track the full conversation's cost as it grows.
+            const s = m.session;
+            if (s.in > 0 || s.out > 0) {
+              const cachePct = s.in > 0 ? Math.round((s.cached / s.in) * 100) : 0;
+              const cachedNote = s.cached > 0 ? ` (${s.cached} cached · ${cachePct}%)` : "";
+              parts.push(`累計 in ${s.in}${cachedNote} / out ${s.out} tok`);
+            }
+
             localStatus(parts.join(" · "), false);
             if (assistantBuf.trim()) {
               m.history.push({ role: "assistant", content: assistantBuf });
