@@ -3,18 +3,18 @@
     "type": "function",
     "function": {
       "name": "mdp_search_blocks",
-      "description": "PRIMARY ENTRY POINT when the user's question contains identifiable keywords (topics, technical terms, named entities, numbers). Call this FIRST before mdp_list_blocks — keyword search reaches candidate blocks more efficiently than scanning the full manifest. Case-insensitive substring match across each block's title, summary, id, type, tags, status, keywords (author-declared ∪ auto-extracted N-gram/PMI keyword list), and body markdown. Snippets are always truncated context windows, never full body — so scanning body costs nothing on the response side. Use `limit` to cap result count. Two call modes: single keyword via `query`, or multi-keyword OR via `any_of` (preferred — fan out several candidate terms in ONE call instead of N round-trips). Returns [{id, type, status, title, line, keywords, matched, snippets}] where `matched` lists which input keywords hit and `snippets` is [{field, keyword, snippet}] with each snippet being the keyword surrounded by 5 chars (CJK) or 5 words (ASCII) of context (`…` marks truncation), capped at 5 per block. The snippets often let you judge relevance without an extra mdp_read_block. Empty list → fall back to mdp_list_blocks or mdp_tree.",
+      "description": "Keyword search across blocks. Returns matched blocks with snippets (5-char / 5-word context around each hit).",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the Markdown+ document." },
-          "query": { "type": "string", "description": "Single keyword or phrase to search for. Optional if `any_of` is provided." },
+          "path": { "type": "string" },
+          "query": { "type": "string" },
           "any_of": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Multi-keyword OR list. Each block is scored by total hit count across all terms. Each result row's `matched` field tells you which of these keywords actually hit that block. Use this when several candidate terms might apply — one call covers all of them."
+            "description": "Multi-keyword OR list."
           },
-          "limit": { "type": "integer", "description": "Max results to return. Default 20." }
+          "limit": { "type": "integer" }
         },
         "required": ["path"]
       }
@@ -24,22 +24,19 @@
     "type": "function",
     "function": {
       "name": "mdp_list_blocks",
-      "description": "Structural overview of a Markdown+ document — fallback entry point when the user's question has no identifiable keyword. If the question DOES name concrete topics or terms, prefer mdp_search_blocks first. Returns a metadata-only manifest [{id, type, status, title, line, keywords}], NOT body content. The `keywords` field is author-declared `keywords:` if present, otherwise the auto-extracted N-gram/PMI keyword list (plus structural tags like mermaid diagram type and table column headers).",
+      "description": "Refresh block manifest. Only call if the preloaded manifest looks stale.",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": {
-            "type": "string",
-            "description": "Path to the Markdown+ (.mdp.md) document."
-          },
+          "path": { "type": "string" },
           "depth": {
             "type": "integer",
-            "description": "Nesting depth to include. 1 = top-level blocks only, 2 = include direct children, etc. Omit for all levels."
+            "description": "1 = top-level only, 2 = +direct children, …"
           },
           "where": {
             "type": "object",
-            "description": "Filter by block attributes / metadata, e.g. {\"type\": \"decision\", \"status\": \"open\"}. Use the value \"*\" to match any present value of a key.",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": { "type": "string" },
+            "description": "Filter by metadata, e.g. {\"type\":\"decision\"}."
           }
         },
         "required": ["path"]
@@ -50,12 +47,12 @@
     "type": "function",
     "function": {
       "name": "mdp_get_block_meta",
-      "description": "Get one block's full metadata: id, type, line, depth, parent, children, title, summary, all author-declared key:value `metadata`, computed `auto_keywords` (dictionary-free N-gram + PMI + entropy + structural tags; empty when author already declared `keywords:`), and body line count. Still NO body content. Call after mdp_search_blocks / mdp_list_blocks to inspect a specific candidate before deciding to read it.",
+      "description": "Full metadata of one block (parent, children, all metadata, no body).",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the Markdown+ document." },
-          "id": { "type": "string", "description": "Block id (without the leading '#')." }
+          "path": { "type": "string" },
+          "id": { "type": "string" }
         },
         "required": ["path", "id"]
       }
@@ -65,12 +62,12 @@
     "type": "function",
     "function": {
       "name": "mdp_list_children",
-      "description": "List the direct child block ids of a block. Use to walk a document's hierarchy one level at a time without pulling content.",
+      "description": "Direct child block ids.",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the Markdown+ document." },
-          "id": { "type": "string", "description": "Parent block id (without the leading '#')." }
+          "path": { "type": "string" },
+          "id": { "type": "string" }
         },
         "required": ["path", "id"]
       }
@@ -80,19 +77,19 @@
     "type": "function",
     "function": {
       "name": "mdp_read_block",
-      "description": "Read a block's body markdown. This is the ONLY call that returns real content and spends tokens — call it last, only on the specific block(s) you actually need. The returned body includes the block's own header line, so it is a valid standalone Markdown+ snippet.",
+      "description": "Read a block's body markdown.",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the Markdown+ document." },
-          "id": { "type": "string", "description": "Block id (without the leading '#')." },
+          "path": { "type": "string" },
+          "id": { "type": "string" },
           "include_children": {
             "type": "boolean",
-            "description": "If true, return the whole subtree (child headers + bodies). Default false (own body only)."
+            "description": "Include the subtree."
           },
           "max_lines": {
             "type": "integer",
-            "description": "Cap the number of returned lines. If hit, the response sets truncated:true."
+            "description": "Cap returned lines."
           }
         },
         "required": ["path", "id"]
@@ -103,12 +100,12 @@
     "type": "function",
     "function": {
       "name": "mdp_resolve_xref",
-      "description": "Resolve a block's relationships: parent, children, superseded-by / supersedes, and related ids. Each reference is resolved to a small descriptor (or marked found:false if it points nowhere). Use to follow decision history and cross-links.",
+      "description": "Resolve relationships: parent / children / superseded-by / related.",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the Markdown+ document." },
-          "id": { "type": "string", "description": "Block id (without the leading '#')." }
+          "path": { "type": "string" },
+          "id": { "type": "string" }
         },
         "required": ["path", "id"]
       }
@@ -118,11 +115,11 @@
     "type": "function",
     "function": {
       "name": "mdp_tree",
-      "description": "Return the full block hierarchy of a document as nested nodes ({id, type, status, title, line, children}). Metadata-only, no body content. Use for a one-shot structural overview of a whole document.",
+      "description": "Full nested block hierarchy (metadata only).",
       "parameters": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the Markdown+ document." }
+          "path": { "type": "string" }
         },
         "required": ["path"]
       }

@@ -153,9 +153,11 @@ def _execute_mdp_tool(tool_name: str, raw_args: dict, doc_path: Path) -> object:
 def _extract_usage(resp) -> tuple[int, int, int]:
     """Pull (prompt_tokens, cached_prompt_tokens, completion_tokens) out of an
     OpenAI ChatCompletion response. `cached_tokens` lives under
-    usage.prompt_tokens_details.cached_tokens — present on gpt-4o family when
-    prompt caching kicks in (auto for prompts ≥ 1024 tok with matching prefix,
-    50% input discount). Returns 0s if any field is missing."""
+    usage.prompt_tokens_details.cached_tokens — populated whenever the chosen
+    model supports prompt caching (GPT-4o / 4.1 / 5 / o1 families all do),
+    auto-engaged for prompts ≥ 1024 tok with a matching prefix, 50% input
+    discount. Returns 0s if any field is missing (older models, non-OpenAI
+    backends, or sub-1024-tok prompts that don't trigger caching)."""
     usage = getattr(resp, "usage", None)
     if not usage:
         return 0, 0, 0
@@ -608,19 +610,52 @@ class Handler(SimpleHTTPRequestHandler):
                 return
 
             # ===== Markdown+ tool-loop mode (default) =====
-            # Light system prompt so the LLM understands the document context.
+            # Pre-load the block manifest (id/type/status/title/line/keywords —
+            # no body) into the system prompt. Two wins:
+            #   (1) Sits inside the cacheable prefix → OpenAI prompt caching
+            #       discounts it 50% on every iteration after the first.
+            #   (2) The LLM no longer needs an opening mdp_list_blocks call to
+            #       discover what's in the doc → saves ~1 round trip and the
+            #       full-manifest tool_result that would otherwise accumulate
+            #       across subsequent iterations.
+            try:
+                manifest = mdp_query.list_blocks(doc_path)
+            except Exception:  # noqa: BLE001 — defensive: parse error shouldn't 500 the chat
+                manifest = None
+
+            if manifest:
+                manifest_json = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
+                manifest_section = (
+                    f"\n\n--- BLOCK MANIFEST ({len(manifest)} blocks, metadata only — no body) ---\n"
+                    "Each entry: {\"id\",\"type\",\"status\",\"title\",\"line\",\"keywords\"}\n"
+                    f"{manifest_json}"
+                )
+            else:
+                manifest_section = ""
+
             messages: list[dict] = [
                 {"role": "system", "content": (
                     "You are answering questions about a Markdown+ document the user uploaded. "
-                    "Always use the mdp_* tools to inspect the document — start with mdp_list_blocks "
-                    "to see what's available, then mdp_get_block_meta or mdp_read_block on specific "
-                    "block ids. Don't guess the document's content. Cite block ids in your answer "
+                    "The block manifest below lists EVERY block's metadata "
+                    "(id/type/status/title/line/keywords). Use it directly — do NOT call "
+                    "mdp_list_blocks unless you suspect the manifest is stale. Prefer "
+                    "mdp_search_blocks for keyword hits (it now returns body-context snippets, "
+                    "often enough to answer without reading the full block), and mdp_read_block "
+                    "only when you actually need full body text. "
+                    "Don't guess body content. Cite block ids in your answer "
                     "(e.g. \"`#decision-canary` says ...\"). Keep answers concise unless asked otherwise."
+                    + manifest_section
                 )},
             ]
             messages.extend(history)
 
-            write_ndjson({"type": "start", "model": MODEL, "tools_loaded": len(tools), "mode": "blocks"})
+            write_ndjson({
+                "type": "start",
+                "model": MODEL,
+                "tools_loaded": len(tools),
+                "mode": "blocks",
+                "manifest_blocks": len(manifest) if manifest else 0,
+            })
 
             total_tool_calls = 0
             total_input_tokens = 0

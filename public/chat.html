@@ -970,9 +970,12 @@ body {
           try { msg = JSON.parse(line); } catch (e) { continue; }
 
           if (msg.type === "start") {
+            // For Markdown+ we now preload the block manifest into the system
+            // prompt; show that so the user knows the LLM didn't need an
+            // opening mdp_list_blocks call to discover the document shape.
             const toolsLabel = mode === "plain"
               ? `plain, head ${body.head_lines} lines`
-              : `${msg.tools_loaded} tools`;
+              : `${msg.tools_loaded} tools${msg.manifest_blocks ? `, ${msg.manifest_blocks} blocks preloaded` : ""}`;
             localStatus(`LLM 思考中… (${msg.model}, ${toolsLabel})`, false);
           } else if (msg.type === "iteration") {
             localStatus(`iteration ${msg.n}…`, false);
