@@ -70,6 +70,11 @@ function printManifest(rows) {
       `  L${String(r.line ?? 0).padStart(4)}  #${String(r.id ?? "").padEnd(28)} ` +
       `${String(r.type ?? "").padEnd(12)} ${String(status).padEnd(12)} ${r.title ?? ""}`
     );
+    // `snippets` is search-only — each entry shows where the keyword actually
+    // hit, with `…` marking truncation. Skipped silently for list/tree output.
+    for (const snip of r.snippets || []) {
+      console.log(`        ↳ [${snip.field}] ${snip.snippet}`);
+    }
   }
   console.log(`  (${rows.length} blocks)`);
 }

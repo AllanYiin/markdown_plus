@@ -43,12 +43,15 @@ metadata、最後只讀它真正需要的 block。
 | `get_block_meta(path, id)` | 單一 block 的完整 metadata | ✗ |
 | `list_children(path, id)` | 直系子 block id 清單 | ✗ |
 | `read_block(path, id, include_children, max_lines)` | block body markdown | ✓ |
-| `search_blocks(path, query, fields, limit)` | 關鍵字搜尋（只比對 metadata/title/summary） | ✗ |
+| `search_blocks(path, query, fields, limit)` | 關鍵字搜尋，回傳命中 block + 截斷 snippet | snippet only |
 | `resolve_xref(path, id)` | parent / children / superseded-by / related 關係 | ✗ |
 | `tree(path)` | 巢狀 block 階層 | ✗ |
 
 **關鍵設計：預設不回傳 body。** 每一步 AI 都要明確選擇「我要拿什麼」，
 `read_block` 是唯一會花 token 的呼叫。
+`search_blocks` 雖然會掃 body，但只回傳關鍵字命中處前後 5 個字元（CJK keyword）
+或 5 個單字（ASCII keyword）的截斷 snippet（`…` 標示被截斷），
+每個 block 上限 5 條 snippet，整體回應量還是受 `limit` 控制，不會塞整段 body。
 
 ### Python
 
@@ -102,7 +105,8 @@ python cli/python/mdp.py children public/samples/decision-record.mdp.md options
 python cli/python/mdp.py read public/samples/decision-record.mdp.md options --children
 python cli/python/mdp.py read doc.mdp.md big-block --max-lines 50
 
-# 關鍵字搜尋（只掃 metadata/title/summary）
+# 關鍵字搜尋（掃 metadata + title/summary + keywords + body）
+# 結果每筆會帶 snippets：命中關鍵字前後 5 字元（CJK）或 5 單字（ASCII）的截斷視窗
 python cli/python/mdp.py search public/samples/decision-record.mdp.md turborepo
 
 # 跟隨關係

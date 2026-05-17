@@ -86,6 +86,10 @@ def _print_manifest(rows: list[dict]) -> None:
         status = r.get("status") or "-"
         print(f"  L{r.get('line', 0):>4}  #{r.get('id', ''):<28} "
               f"{r.get('type', ''):<12} {status:<12} {r.get('title', '')}")
+        # `snippets` is search_blocks-specific: each one shows where the keyword
+        # actually hit, with `…` marking truncation. Skipped silently for list/tree.
+        for snip in r.get("snippets") or []:
+            print(f"        ↳ [{snip['field']}] {snip['snippet']}")
     print(f"  ({len(rows)} blocks)")
 
 

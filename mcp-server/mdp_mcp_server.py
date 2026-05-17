@@ -55,6 +55,52 @@ mcp = FastMCP("markdown-plus")
 
 
 # --- tools (reuse query.py; docstrings double as the MCP tool descriptions) ---
+#
+# Tool registration order matters: most MCP clients show tools to the model in
+# the order they were declared, and the model gravitates to the first viable
+# option. `mdp_search_blocks` is FIRST so the model reaches for keyword search
+# before falling back to a full manifest scan whenever the user's question has
+# identifiable terms.
+
+@mcp.tool()
+def mdp_search_blocks(
+    path: str,
+    query_text: str | None = None,
+    any_of: list[str] | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """PRIMARY ENTRY POINT when the user's question contains identifiable
+    keywords (topics, technical terms, named entities, numbers). Call this
+    FIRST — it is more efficient than scanning the full manifest with
+    mdp_list_blocks because it goes straight to candidate blocks.
+
+    Case-insensitive substring match across each block's title, summary, id,
+    type, tags, status, keywords (author-declared `keywords:` ∪ the
+    dictionary-free auto-extracted keyword list), and body markdown. Snippets
+    are always truncated context windows, never full body — so scanning body
+    costs nothing on the response side. Use `limit` to cap result count.
+
+    Two call modes:
+      - single keyword: query_text="部署"
+      - multi-keyword OR (preferred when several terms might apply): pass them
+        in any_of=["部署", "風險", "流量"]. Fan out in ONE call instead of
+        N round-trips; results are scored by total hit count across all terms.
+
+    Each returned row is
+        {id, type, status, title, line, keywords, matched, snippets}
+    where `matched` lists which input keywords hit this block, and `snippets`
+    is a list of [{field, keyword, snippet}] — each `snippet` is the keyword
+    surrounded by 5 chars (CJK keyword) or 5 words (ASCII keyword) of context
+    with `…` marking truncation, capped at 5 snippets per block. This lets you
+    judge relevance without an extra mdp_read_block round-trip in many cases.
+
+    Returns [] when nothing matches — at that point fall back to
+    mdp_list_blocks or mdp_tree for structural exploration.
+    """
+    return query.search_blocks(
+        path, query_text, any_of=any_of, limit=limit,
+    )
+
 
 @mcp.tool()
 def mdp_list_blocks(
@@ -62,10 +108,16 @@ def mdp_list_blocks(
     depth: int | None = None,
     where: dict[str, str] | None = None,
 ) -> list[dict]:
-    """List blocks in a Markdown+ document. Returns a metadata-only manifest
-    [{id, type, status, title, line}], NOT body content. ALWAYS call this first
-    to discover what is in a file before reading any block — it is the cheap,
-    token-light entry point for progressive disclosure.
+    """Structural overview of a Markdown+ document — fallback entry point when
+    the user's question has no identifiable keyword. If the question DOES name
+    concrete topics or terms, prefer mdp_search_blocks first; only come back
+    here when the search returns nothing or the user explicitly asks for an
+    overview.
+
+    Returns a metadata-only manifest [{id, type, status, title, line, keywords}],
+    NOT body content. The `keywords` field is the author-declared `keywords:`
+    if present, otherwise the auto-extracted N-gram/PMI/entropy keyword list
+    (plus structural tags like mermaid diagram type and table column headers).
 
     depth: 1 = top-level blocks only, 2 = include direct children, etc.
     where: filter by attribute/metadata, e.g. {"type": "decision", "status": "open"};
@@ -76,10 +128,12 @@ def mdp_list_blocks(
 
 @mcp.tool()
 def mdp_get_block_meta(path: str, id: str) -> dict:
-    """Get one block's full metadata (id, type, line, depth, parent, children,
-    title, summary, all key:value metadata, body line count). Still NO body
-    content. Call after mdp_list_blocks to inspect a specific candidate before
-    deciding to read it."""
+    """Get one block's full metadata: id, type, line, depth, parent, children,
+    title, summary, all author-declared key:value `metadata`, computed
+    `auto_keywords` (dictionary-free N-gram + PMI + entropy + structural tags;
+    empty when author already declared `keywords:`), and body line count.
+    Still NO body content. Call after mdp_search_blocks / mdp_list_blocks to
+    inspect a specific candidate before deciding to read it."""
     return query.get_block_meta(path, id)
 
 
@@ -111,15 +165,6 @@ def mdp_read_block(
 
 
 @mcp.tool()
-def mdp_search_blocks(path: str, query_text: str, limit: int = 20) -> list[dict]:
-    """Lightweight keyword search across block metadata, title and summary —
-    never scans body content. Case-insensitive substring match, ranked by match
-    count. Returns manifest-shaped results [{id, type, status, title, line}].
-    Use to locate candidate blocks by topic before reading them."""
-    return query.search_blocks(path, query_text, limit=limit)
-
-
-@mcp.tool()
 def mdp_resolve_xref(path: str, id: str) -> dict:
     """Resolve a block's relationships: parent, children, superseded-by /
     supersedes, and related ids. Each reference is resolved to a small
@@ -136,13 +181,14 @@ def mdp_tree(path: str) -> list[dict]:
     return query.tree(path)
 
 
-# Registry for CLI dispatch — name → callable.
+# Registry for CLI dispatch — name → callable. Order mirrors the @mcp.tool()
+# registration order above (search first, then list, then drill-down).
 TOOLS: dict = {
+    "mdp_search_blocks": mdp_search_blocks,
     "mdp_list_blocks": mdp_list_blocks,
     "mdp_get_block_meta": mdp_get_block_meta,
     "mdp_list_children": mdp_list_children,
     "mdp_read_block": mdp_read_block,
-    "mdp_search_blocks": mdp_search_blocks,
     "mdp_resolve_xref": mdp_resolve_xref,
     "mdp_tree": mdp_tree,
 }
