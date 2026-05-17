@@ -1,1 +1,2 @@
 openai>=1.60.0
+tiktoken>=0.7.0
