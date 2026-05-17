@@ -58,6 +58,7 @@ import inspect
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -135,11 +136,17 @@ _PLAIN_BASH_TOOL: dict = {
 }
 
 _BASH_DENY_RE = re.compile(
-    r"(\$\(|`|>>?|<\(|\b(rm|mv|cp|chmod|chown|dd|mkfs|mount|umount|"
+    r"(\$\(|`|(?<![=!<>])>>?(?![=])|<\(|\b(rm|mv|cp|chmod|chown|dd|mkfs|mount|umount|"
     r"curl|wget|ssh|scp|ftp|nc|ncat|telnet|python|python3|node|perl|"
     r"ruby|php|powershell|pwsh|cmd|git|pip|npm|pnpm|yarn)\b)",
     re.IGNORECASE,
 )
+
+
+def _limit_tool_text(s: str, n: int = 12000) -> tuple[str, bool]:
+    if len(s) <= n:
+        return s, False
+    return s[:n] + "\n...[truncated]...", True
 
 
 def _load_chat_tools() -> list[dict] | None:
@@ -189,6 +196,168 @@ def _execute_mdp_tool(tool_name: str, raw_args: dict, doc_path: Path) -> object:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def _is_doc_arg(arg: str) -> bool:
+    normalized = arg.strip("\"'")
+    return normalized in {"document.md", "./document.md", "$DOC_PATH", "${DOC_PATH}"}
+
+
+def _strip_doc_args(args: list[str]) -> list[str]:
+    return [a for a in args if not _is_doc_arg(a)]
+
+
+def _plain_cli_source(args: list[str], stdin_lines: list[str] | None, doc_lines: list[str]) -> tuple[list[str], list[str]]:
+    return (doc_lines, _strip_doc_args(args)) if any(_is_doc_arg(a) for a in args) or stdin_lines is None else (stdin_lines, args)
+
+
+def _run_plain_cli_segment(segment: str, stdin_lines: list[str] | None, doc_lines: list[str]) -> tuple[int, list[str], str]:
+    try:
+        argv = shlex.split(segment, posix=True)
+    except ValueError as e:
+        return 2, [], f"parse error: {e}"
+    if not argv:
+        return 0, stdin_lines or [], ""
+
+    cmd = argv[0]
+    args = argv[1:]
+    source, args = _plain_cli_source(args, stdin_lines, doc_lines)
+
+    if cmd == "cat":
+        if args:
+            return 2, [], "cat fallback only supports document.md or piped input"
+        return 0, source[:], ""
+
+    if cmd == "nl":
+        if args not in (["-ba"], ["-b", "a"], []):
+            return 2, [], "nl fallback supports only: nl -ba document.md"
+        return 0, [f"{i:>6}\t{line}" for i, line in enumerate(source, start=1)], ""
+
+    if cmd == "wc":
+        if args and args != ["-l"]:
+            return 2, [], "wc fallback supports only: wc -l document.md"
+        suffix = " document.md" if stdin_lines is None else ""
+        return 0, [f"{len(source)}{suffix}"], ""
+
+    if cmd in {"head", "tail"}:
+        n = 10
+        rest = args[:]
+        if rest:
+            if rest[0] == "-n" and len(rest) >= 2:
+                try:
+                    n = max(0, int(rest[1]))
+                except ValueError:
+                    return 2, [], f"{cmd}: invalid line count"
+                rest = rest[2:]
+            elif rest[0].startswith("-n") and len(rest[0]) > 2:
+                try:
+                    n = max(0, int(rest[0][2:]))
+                except ValueError:
+                    return 2, [], f"{cmd}: invalid line count"
+                rest = rest[1:]
+            elif re.fullmatch(r"-\d+", rest[0]):
+                n = max(0, int(rest[0][1:]))
+                rest = rest[1:]
+        if rest:
+            return 2, [], f"{cmd} fallback supports only -n N and document.md"
+        return 0, (source[:n] if cmd == "head" else source[-n:] if n else []), ""
+
+    if cmd == "sed":
+        if len(args) < 2 or args[0] != "-n":
+            return 2, [], "sed fallback supports only: sed -n 'A,Bp' document.md"
+        expr = args[1]
+        rest = args[2:]
+        if rest:
+            return 2, [], "sed fallback supports only one address expression and document.md"
+        m = re.fullmatch(r"(\d+)(?:,(\d+))?p", expr.strip())
+        if not m:
+            return 2, [], "sed fallback supports only numeric print ranges like '120,180p'"
+        start = int(m.group(1))
+        end = int(m.group(2) or start)
+        if end < start:
+            start, end = end, start
+        return 0, source[max(0, start - 1):end], ""
+
+    if cmd == "grep":
+        show_numbers = False
+        ignore_case = False
+        rest: list[str] = []
+        for a in args:
+            if a == "-n":
+                show_numbers = True
+            elif a == "-i":
+                ignore_case = True
+            elif a.startswith("-") and set(a[1:]).issubset({"n", "i"}):
+                show_numbers = show_numbers or "n" in a
+                ignore_case = ignore_case or "i" in a
+            else:
+                rest.append(a)
+        if not rest:
+            return 2, [], "grep fallback needs a pattern"
+        pattern = rest[0]
+        extra = _strip_doc_args(rest[1:])
+        if extra:
+            return 2, [], "grep fallback supports one pattern and document.md"
+        needle = pattern.lower() if ignore_case else pattern
+        out: list[str] = []
+        for i, line in enumerate(source, start=1):
+            hay = line.lower() if ignore_case else line
+            if needle in hay:
+                out.append(f"{i}:{line}" if show_numbers else line)
+        return (0 if out else 1), out, ""
+
+    if cmd == "awk":
+        if not args:
+            return 2, [], "awk fallback needs a simple NR range expression"
+        expr = args[0].strip()
+        rest = _strip_doc_args(args[1:])
+        if rest:
+            return 2, [], "awk fallback supports one expression and document.md"
+        m = (
+            re.search(r"NR\s*>=\s*(\d+)\s*&&\s*NR\s*<=\s*(\d+)", expr)
+            or re.search(r"NR\s*==\s*(\d+)\s*,\s*NR\s*==\s*(\d+)", expr)
+        )
+        if not m:
+            return 2, [], "awk fallback supports simple NR ranges, e.g. awk 'NR>=120 && NR<=180' document.md"
+        start, end = int(m.group(1)), int(m.group(2))
+        if end < start:
+            start, end = end, start
+        return 0, source[max(0, start - 1):end], ""
+
+    return 127, [], f"unsupported fallback command: {cmd}"
+
+
+def _execute_plain_cli_fallback(command: str, source_doc_path: Path) -> object:
+    """Interpret a small read-only bash subset for Windows/no-bash environments."""
+    doc_lines = source_doc_path.read_text(encoding="utf-8").splitlines()
+    segments = [s.strip() for s in command.split("|") if s.strip()]
+    if not segments:
+        return {"error": "empty command"}
+
+    stdin_lines: list[str] | None = None
+    exit_code = 0
+    stderr_parts: list[str] = []
+    for segment in segments:
+        exit_code, stdin_lines, stderr = _run_plain_cli_segment(segment, stdin_lines, doc_lines)
+        if stderr:
+            stderr_parts.append(stderr)
+        if exit_code not in (0, 1):
+            break
+
+    stdout_raw = "\n".join(stdin_lines or [])
+    if stdout_raw:
+        stdout_raw += "\n"
+    stderr_raw = "\n".join(stderr_parts)
+    stdout, out_trunc = _limit_tool_text(stdout_raw)
+    stderr, err_trunc = _limit_tool_text(stderr_raw)
+    return {
+        "command": command,
+        "exit_code": exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "truncated": out_trunc or err_trunc,
+        "fallback": "python-readonly-cli",
+    }
+
+
 def _execute_plain_bash(raw_args: dict, source_doc_path: Path) -> object:
     """Run a constrained read-only bash command against a temp document.md."""
     command = str((raw_args or {}).get("command") or "").strip()
@@ -206,15 +375,9 @@ def _execute_plain_bash(raw_args: dict, source_doc_path: Path) -> object:
         }
     bash = shutil.which("bash")
     if not bash:
-        return {"error": "bash executable not found on server"}
+        return _execute_plain_cli_fallback(command, source_doc_path)
     if os.name == "nt" and str(Path(bash)).lower().endswith("\\windows\\system32\\bash.exe"):
-        return {
-            "error": (
-                "Windows WSL bash launcher found, but this app needs a real "
-                "bash executable that can run against local temp files. Install "
-                "Git Bash, run the server inside WSL/Linux, or deploy on Linux."
-            )
-        }
+        return _execute_plain_cli_fallback(command, source_doc_path)
 
     with tempfile.TemporaryDirectory(prefix="plain-cli-") as td:
         work_dir = Path(td)
@@ -241,13 +404,8 @@ def _execute_plain_bash(raw_args: dict, source_doc_path: Path) -> object:
         except subprocess.TimeoutExpired:
             return {"error": "command timed out after 8 seconds", "command": command}
 
-    def limit(s: str, n: int = 12000) -> tuple[str, bool]:
-        if len(s) <= n:
-            return s, False
-        return s[:n] + "\n...[truncated]...", True
-
-    stdout, out_trunc = limit(p.stdout or "")
-    stderr, err_trunc = limit(p.stderr or "")
+    stdout, out_trunc = _limit_tool_text(p.stdout or "")
+    stderr, err_trunc = _limit_tool_text(p.stderr or "")
     return {
         "command": command,
         "exit_code": p.returncode,
