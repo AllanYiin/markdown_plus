@@ -2293,6 +2293,7 @@ blockquote {
       </label>
       <button type="button" class="site-btn" id="rewriter-run">改寫</button>
       <button type="button" class="site-btn secondary" id="rewriter-push">推送至 Editor →</button>
+      <button type="button" class="site-btn secondary" id="rewriter-save" title="把改寫結果存成 .mdp.md 檔">存檔 ↓</button>
       <span class="pg-rewriter-status" id="rewriter-status">準備就緒</span>
     </div>
     <div class="pg-rewriter">
@@ -4397,6 +4398,68 @@ HTML:
     activateTab("editor");
     update();
   });
+
+  // ---- Save rewriter output as .mdp.md file ----
+  // Prefer File System Access API (native picker → user chooses location +
+  // filename). Falls back to anchor-download in browsers without it (Firefox,
+  // Safari). Filename defaults to the document's H1, slugified, with
+  // .mdp.md suffix; falls back to a timestamped name when no H1 is present.
+  function suggestedFilename(text) {
+    const h1 = (text.match(/^#\s+(.+)$/m) || [])[1] || "";
+    const slug = h1
+      .trim()
+      .toLowerCase()
+      .replace(/[\s　]+/g, "-")
+      .replace(/[\/\\?%*:|"<>#]+/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 64);
+    if (slug) return slug + ".mdp.md";
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return "markdown-plus-output-" + ts + ".mdp.md";
+  }
+
+  async function saveRewriterOutput() {
+    const text = rwOut.value;
+    if (!text.trim()) { rwStatus.textContent = "輸出為空,沒東西可存"; rwStatus.style.color = "var(--err)"; return; }
+    const filename = suggestedFilename(text);
+    // Path A: native save dialog (Chromium-based browsers).
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: "Markdown+ document",
+            accept: { "text/markdown": [".mdp.md", ".md"] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(text);
+        await writable.close();
+        rwStatus.textContent = "已存檔:" + handle.name;
+        rwStatus.style.color = "var(--ok, inherit)";
+        return;
+      } catch (e) {
+        // AbortError = user cancelled the dialog. Stay silent in that case.
+        if (e && e.name === "AbortError") { rwStatus.textContent = "存檔取消"; return; }
+        // Any other error → fall through to anchor download.
+      }
+    }
+    // Path B: anchor download fallback.
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    rwStatus.textContent = "已下載:" + filename;
+    rwStatus.style.color = "var(--ok, inherit)";
+  }
+
+  document.getElementById("rewriter-save").addEventListener("click", saveRewriterOutput);
 
   // ---- Per-pane fullscreen toggle ----
   function exitAllFullscreen() {
