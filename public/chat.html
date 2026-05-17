@@ -94,65 +94,20 @@ body {
 .site-nav-github:hover { color: var(--accent-on); background: rgba(255,255,255,0.1); }
 .site-nav-github svg { display: block; }
 
-/* --- Chat shell: two-column layout --- */
+/* --- Chat shell --- */
 .chat-shell {
   flex: 1;
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(420px, 2fr);
-  gap: 0;
+  display: flex;
   min-height: 0;
   overflow: hidden;
 }
-@media (max-width: 760px) {
-  .chat-shell { grid-template-columns: 1fr; grid-template-rows: 30vh 1fr; }
-}
 
-/* --- Doc pane (left) --- */
-.chat-doc {
-  display: flex; flex-direction: column;
-  border-right: 1px solid var(--border);
-  background: var(--surface-2);
-  min-width: 0; min-height: 0;
-}
-.chat-doc-head {
-  display: flex; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  font-size: 13px;
-}
-.chat-doc-head button {
-  display: inline-flex; align-items: center; gap: var(--sp-2);
-  padding: 4px 10px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  cursor: pointer;
-  font: inherit;
-  transition: background var(--t-fast), border-color var(--t-fast);
-}
-.chat-doc-head button:hover { background: var(--accent-soft); border-color: var(--accent); }
-.chat-doc-head .doc-stats { color: var(--text-muted); font-size: 12px; margin-left: auto; font-family: var(--font-mono); }
-#doc-source {
-  flex: 1;
-  width: 100%;
-  border: none;
-  background: var(--surface);
-  padding: var(--sp-3);
-  font: 12px/1.5 var(--font-mono);
-  color: var(--text);
-  resize: none;
-  outline: none;
-  min-height: 0;
-}
-
-/* --- Chat pane (right) --- */
+/* --- Chat pane --- */
 .chat-panel {
   display: flex; flex-direction: column;
   background: var(--bg);
   min-width: 0; min-height: 0;
+  width: 100%;
 }
 .chat-panel-head {
   display: flex; align-items: center; gap: var(--sp-2);
@@ -222,6 +177,33 @@ body {
 /* Each mode owns a separate messages container; we toggle display. */
 .mode-panel { display: none; flex: 1; min-height: 0; flex-direction: column; }
 .mode-panel.active { display: flex; }
+
+.doc-context {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.doc-context button {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  padding: 4px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font: inherit;
+}
+.doc-context button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.doc-context .doc-stats {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .chat-messages {
   flex: 1;
@@ -445,23 +427,9 @@ body {
 
 <div class="chat-shell">
 
-  <!-- ===== Left: document pane ===== -->
-  <aside class="chat-doc">
-    <header class="chat-doc-head">
-      <button id="file-load" type="button" title="從本機載入 .md / .mdp.md / .mdp 檔">
-        ↓ 載入文件
-      </button>
-      <input type="file" id="file-input" accept=".md,.mdp,.markdown,.txt,text/markdown,text/plain" style="display:none">
-      <button id="sample-load" type="button" title="載入內建 kitchen-sink 範例">範例</button>
-      <span class="doc-stats" id="doc-stats">未載入</span>
-    </header>
-    <textarea id="doc-source" readonly placeholder="從本機選一份 Markdown+ 文件…
-聊天時 LLM 會用 mdp_list_blocks / read_block / search_blocks 等工具讀這份文件,
-回答你針對它的問題。"></textarea>
-  </aside>
-
-  <!-- ===== Right: chat pane ===== -->
+  <!-- ===== Chat pane ===== -->
   <section class="chat-panel">
+    <input type="file" id="file-input" accept=".md,.mdp,.markdown,.txt,text/markdown,text/plain" style="display:none">
     <header class="chat-panel-head">
       <span class="health" id="chat-health">checking…</span>
       <button class="reset-btn" id="reset-chat" type="button" title="清空當前 tab 的對話歷史">清空對話</button>
@@ -472,23 +440,23 @@ body {
         <span class="mode-tab-hint">tools</span>
       </button>
       <button class="mode-tab" role="tab" data-mode="plain" type="button">
-        Plain Markdown
-        <span class="mode-tab-hint">first N lines</span>
+        Plain CLI
+        <span class="mode-tab-hint">bash</span>
       </button>
-      <span class="mode-tab-controls" id="plain-controls" style="display:none;">
-        前
-        <input type="number" id="head-lines" min="10" max="2000" step="10" value="200">
-        行
-      </span>
     </div>
 
     <!-- ===== Tab 1: Markdown+ (block-tool agent loop) ===== -->
     <div class="mode-panel active" id="panel-blocks" role="tabpanel">
+      <div class="doc-context">
+        <button type="button" class="doc-load" data-doc-mode="blocks">載入 Markdown+ 文件</button>
+        <button type="button" class="doc-sample" data-doc-mode="blocks">範例</button>
+        <span class="doc-stats" id="doc-stats-blocks">未載入</span>
+      </div>
       <div class="chat-messages" id="messages-blocks">
         <div class="placeholder-card">
           <h3>Markdown+ 漸進式工具讀取</h3>
           <ol>
-            <li>左側點「載入文件」或「範例」,匯入一份 .mdp.md</li>
+            <li>上方載入一份 Markdown+ 文件或範例</li>
             <li>右下方輸入問題,送出</li>
             <li>LLM 會用 7 個 <code>mdp_*</code> 工具(list / read / search / xref / tree …)漸進式讀取文件</li>
             <li>每次工具呼叫的「name + args」與回傳結果都會以可摺疊卡片顯示</li>
@@ -498,16 +466,20 @@ body {
       <div class="status-line" id="status-blocks"></div>
     </div>
 
-    <!-- ===== Tab 2: Plain Markdown (head-N-lines baseline) ===== -->
+    <!-- ===== Tab 2: Plain CLI (bash baseline) ===== -->
     <div class="mode-panel" id="panel-plain" role="tabpanel">
+      <div class="doc-context">
+        <button type="button" class="doc-load" data-doc-mode="plain">載入傳統 Markdown</button>
+        <button type="button" class="doc-sample" data-doc-mode="plain">範例</button>
+        <span class="doc-stats" id="doc-stats-plain">未載入</span>
+      </div>
       <div class="chat-messages" id="messages-plain">
         <div class="placeholder-card">
-          <h3>Plain Markdown 前 N 行 baseline</h3>
+          <h3>Plain CLI bash baseline</h3>
           <ol>
             <li>把文件當作 <strong>沒有 block 結構</strong> 的純 Markdown 看待</li>
-            <li>LLM <strong>沒有任何工具</strong>,只能看到文件的<strong>前 N 行</strong>就要直接回答</li>
-            <li>右上 <code>前 N 行</code> 可調(預設 200),用來模擬 token budget 限制</li>
-            <li>對比 Markdown+ 模式:看誰能在相同 budget 下答得更準</li>
+            <li>LLM 只有一個 <code>bash(command)</code> 工具,自行下 <code>grep</code> / <code>sed</code> / <code>awk</code> / <code>nl</code> 指令讀取 <code>document.md</code></li>
+            <li>對比 Markdown+ 模式:看結構化工具是否比真實 CLI 純文字搜尋/按列閱讀更有效率</li>
           </ol>
         </div>
       </div>
@@ -526,28 +498,22 @@ body {
 (function () {
   "use strict";
 
-  const docSource = document.getElementById("doc-source");
-  const docStats = document.getElementById("doc-stats");
-  const fileLoad = document.getElementById("file-load");
   const fileInput = document.getElementById("file-input");
-  const sampleLoad = document.getElementById("sample-load");
   const chatHealth = document.getElementById("chat-health");
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
   const resetBtn = document.getElementById("reset-chat");
-  const headLinesInput = document.getElementById("head-lines");
-  const plainControls = document.getElementById("plain-controls");
 
-  // Per-mode state. Both tabs share the same loaded document and same input
-  // box; their conversation history, message DOM, status line, and Responses-
-  // API chain state are kept independent so users can run the same question
-  // through both pipelines and compare side by side without one polluting the
-  // other.
+  // Per-mode state. Both tabs share the same input box, but their loaded
+  // document, conversation history, message DOM, status line, and Responses-
+  // API chain state are kept independent so users can compare different files
+  // and pipelines side by side without one polluting the other.
   //
   // `lastResponseId` is the chain head — set from each `done` event's
   // response_id, sent back as `previous_response_id` on the next turn so the
-  // OpenAI server can reuse stored instructions/manifest/history.
+  // OpenAI server can thread prior input/output items without the browser
+  // resending the full visible chat history.
   // `session` is the running cumulative token total across all turns of this
   // tab, shown after the per-turn stats so the user sees the conversation's
   // total cost grow over time.
@@ -557,22 +523,30 @@ body {
       messagesEl: document.getElementById("messages-blocks"),
       statusEl: document.getElementById("status-blocks"),
       panelEl: document.getElementById("panel-blocks"),
+      statsEl: document.getElementById("doc-stats-blocks"),
       history: [],
       lastResponseId: null,
       session: newSession(),
+      docText: "",
+      docName: "",
+      docStatsReq: 0,
     },
     plain: {
       messagesEl: document.getElementById("messages-plain"),
       statusEl: document.getElementById("status-plain"),
       panelEl: document.getElementById("panel-plain"),
+      statsEl: document.getElementById("doc-stats-plain"),
       history: [],
       lastResponseId: null,
       session: newSession(),
+      docText: "",
+      docName: "",
+      docStatsReq: 0,
     },
   };
   let currentMode = "blocks";
-  let docLoaded = false;
   let chatReady = false;
+  let pendingFileMode = null;
 
   // ---- esc ----
   function esc(s) {
@@ -590,6 +564,20 @@ body {
     } catch (e) {
       return String(obj);
     }
+  }
+  function fmtTok(n) {
+    return Number(n || 0).toLocaleString();
+  }
+  function tokenUsageLabel(inputTokens, cachedTokens, outputTokens) {
+    const input = Math.max(0, Number(inputTokens) || 0);
+    const cached = Math.min(input, Math.max(0, Number(cachedTokens) || 0));
+    const output = Math.max(0, Number(outputTokens) || 0);
+    const uncached = Math.max(0, input - cached);
+    const total = input + output;
+    const inputDetail = cached > 0
+      ? `input ${fmtTok(input)} tok (${fmtTok(uncached)} uncached + ${fmtTok(cached)} cached)`
+      : `input ${fmtTok(input)} tok`;
+    return `${inputDetail} · output ${fmtTok(output)} tok · total ${fmtTok(total)} tok`;
   }
   function formatPrettyJsonHtml(obj) {
     const json = prettyJson(obj);
@@ -708,48 +696,92 @@ body {
     return out.join("");
   }
 
-  // ---- Doc handling ----
-  function updateDocStats() {
-    const text = docSource.value;
+  // ---- Per-tab document handling ----
+  function modeLabel(mode) {
+    return mode === "plain" ? "Plain CLI" : "Markdown+";
+  }
+
+  async function updateDocStats(mode) {
+    const m = MODES[mode];
+    const text = m.docText;
     if (!text.trim()) {
-      docStats.textContent = "未載入";
-      docLoaded = false;
+      m.statsEl.textContent = "未載入";
       enableChat();
       return;
     }
     const lines = text.split("\n").length;
     const blocks = (text.match(/^[ \t]*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/gm) || []).length;
-    docStats.textContent = `${blocks} blocks · ${lines} lines · ${(text.length / 1024).toFixed(1)} KB`;
-    docLoaded = true;
+    const sizeKB = (text.length / 1024).toFixed(1);
+    const name = m.docName ? `${m.docName} · ` : "";
+    // Show what we know immediately; token count is async (tiktoken on server).
+    m.statsEl.textContent = `${name}… tokens · ${blocks} blocks · ${lines} lines · ${sizeKB} KB`;
+    enableChat();
+
+    const reqId = ++m.docStatsReq;
+    try {
+      const r = await fetch("/api/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (reqId !== m.docStatsReq) return;  // a newer doc was loaded; bail
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      const tokStr = Number(j.tokens).toLocaleString();
+      // `≈` prefix when the server fell back to heuristic (tiktoken missing).
+      const prefix = j.estimated ? "≈" : "";
+      m.statsEl.textContent = `${name}${prefix}${tokStr} tokens · ${blocks} blocks · ${lines} lines · ${sizeKB} KB`;
+    } catch (e) {
+      if (reqId !== m.docStatsReq) return;
+      // Client-side fallback estimate (very rough, mixed CJK/EN ≈ 3.5 chars/tok).
+      const est = Math.round(text.length / 3.5).toLocaleString();
+      m.statsEl.textContent = `${name}≈${est} tokens · ${blocks} blocks · ${lines} lines · ${sizeKB} KB`;
+    }
+  }
+
+  function setModeDocument(mode, text, name) {
+    const m = MODES[mode];
+    m.docText = text;
+    m.docName = name || "";
+    const previousMode = currentMode;
+    currentMode = mode;
+    resetConversation();
+    currentMode = previousMode;
+    updateDocStats(mode);
     enableChat();
   }
 
-  fileLoad.addEventListener("click", () => fileInput.click());
+  document.querySelectorAll(".doc-load").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      pendingFileMode = btn.dataset.docMode || currentMode;
+      fileInput.click();
+    });
+  });
+
   fileInput.addEventListener("change", () => {
     const f = fileInput.files && fileInput.files[0];
     if (!f) return;
+    const mode = pendingFileMode || currentMode;
     const reader = new FileReader();
     reader.onload = (e) => {
-      docSource.value = String(e.target.result || "");
-      docSource.scrollTop = 0;
-      updateDocStats();
-      resetConversation();
+      setModeDocument(mode, String(e.target.result || ""), f.name);
     };
     reader.readAsText(f, "utf-8");
     fileInput.value = "";
+    pendingFileMode = null;
   });
 
-  sampleLoad.addEventListener("click", async () => {
-    try {
-      const r = await fetch("/samples/kitchen-sink.mdp.md");
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      docSource.value = await r.text();
-      docSource.scrollTop = 0;
-      updateDocStats();
-      resetConversation();
-    } catch (e) {
-      alert("載入範例失敗:" + e.message);
-    }
+  document.querySelectorAll(".doc-sample").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const mode = btn.dataset.docMode || currentMode;
+      try {
+        const r = await fetch("/samples/kitchen-sink.mdp.md");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        setModeDocument(mode, await r.text(), "kitchen-sink.mdp.md");
+      } catch (e) {
+        alert("載入範例失敗:" + e.message);
+      }
+    });
   });
 
   // ---- Health check (gate Send button on chat tools availability) ----
@@ -782,15 +814,17 @@ body {
   })();
 
   function enableChat() {
-    const on = docLoaded && chatReady;
+    const m = getMode();
+    const hasDoc = !!(m.docText && m.docText.trim());
+    const on = hasDoc && chatReady;
     chatInput.disabled = !on;
     chatSend.disabled = !on;
     if (on) {
-      chatInput.placeholder = "基於這份文件問問題…(Ctrl/Cmd + Enter 送出)";
+      chatInput.placeholder = `基於 ${modeLabel(currentMode)} 文件問問題…(Ctrl/Cmd + Enter 送出)`;
     } else if (!chatReady) {
       chatInput.placeholder = "後端服務未就緒,先看左上方狀態";
     } else {
-      chatInput.placeholder = "先載入文件再開始問問題…";
+      chatInput.placeholder = `先在 ${modeLabel(currentMode)} 分頁載入文件…`;
     }
   }
 
@@ -890,9 +924,9 @@ body {
       <div class="placeholder-card">
         <h3>對話已清空</h3>
         <ol>
-          <li>${docLoaded ? "文件還在,可直接開始問問題" : "請先載入文件"}</li>
+          <li>${m.docText ? `文件還在:${esc(m.docName || "未命名文件")}` : "請先載入文件"}</li>
           <li>${isPlain
-              ? "Plain 模式:LLM 只看得到文件前 N 行,沒有任何工具可用"
+              ? "Plain CLI 模式:LLM 只有 bash 工具,自行用 grep/sed/awk/nl 讀 document.md"
               : "Markdown+ 模式:LLM 會用 mdp_* 工具漸進式讀取文件"}</li>
         </ol>
       </div>`;
@@ -915,7 +949,6 @@ body {
       Object.entries(MODES).forEach(([name, m]) =>
         m.panelEl.classList.toggle("active", name === mode)
       );
-      plainControls.style.display = mode === "plain" ? "" : "none";
       enableChat();
       chatInput.focus();
     });
@@ -944,18 +977,14 @@ body {
     let assistantBuf = "";
     const t0 = performance.now();
 
-    // Body shape differs by mode — `mode:"plain"` skips the tool loop and
-    // tells the server to feed only the first `head_lines` lines of the doc
-    // as the LLM's entire view of the document.
+    // Body shape differs by mode — `mode:"plain"` skips Markdown+ block tools
+    // and asks the server to expose only a low-level bash CLI over document.md.
     // `previous_response_id` chains this turn to the prior turn's final
     // response — server uses it as Responses API previous_response_id so it
-    // can reuse stored instructions/manifest/history and we only upload the
-    // new user message instead of the full conversation.
-    const body = { mode, doc: docSource.value, messages: m.history };
+    // can thread prior input/output items. The server still sends current
+    // instructions/tools as request parameters where needed.
+    const body = { mode, doc: m.docText, messages: m.history };
     if (m.lastResponseId) body.previous_response_id = m.lastResponseId;
-    if (mode === "plain") {
-      body.head_lines = Math.max(10, parseInt(headLinesInput.value, 10) || 200);
-    }
 
     try {
       const r = await fetch("/api/chat", {
@@ -993,17 +1022,15 @@ body {
           try { msg = JSON.parse(line); } catch (e) { continue; }
 
           if (msg.type === "start") {
-            // For Markdown+ we now preload the block manifest into the system
-            // prompt; show that so the user knows the LLM didn't need an
-            // opening mdp_list_blocks call to discover the document shape.
+            // Markdown+ exposes structured mdp_* tools; Plain CLI exposes one
+            // low-level bash tool and lets the model write normal shell commands.
             const toolsLabel = mode === "plain"
-              ? `plain, head ${body.head_lines} lines`
-              : `${msg.tools_loaded} tools${msg.manifest_blocks ? `, ${msg.manifest_blocks} blocks preloaded` : ""}`;
+              ? `plain CLI, ${msg.total_lines} lines, bash tool`
+              : `${msg.tools_loaded} tools, search-first`;
             localStatus(`LLM 思考中… (${msg.model}, ${toolsLabel})`, false);
           } else if (msg.type === "iteration") {
             localStatus(`iteration ${msg.n}…`, false);
           } else if (msg.type === "tool_call") {
-            // Only Markdown+ mode emits these.
             addToolCallCard(msg.name, msg.args);
             localStatus(`呼叫 ${msg.name}…`, false);
           } else if (msg.type === "tool_result") {
@@ -1037,27 +1064,24 @@ body {
             const parts = [`完成 · ${elapsed}s`];
             if (msg.iterations) parts.push(`${msg.iterations} iter`);
             if (typeof msg.tool_calls === "number") parts.push(`${msg.tool_calls} tool calls`);
-            if (typeof msg.input_tokens === "number") {
-              const inTok = msg.input_tokens;
-              const cached = typeof msg.cached_tokens === "number" ? msg.cached_tokens : 0;
-              if (cached > 0 && inTok > 0) {
-                // Show cache hit ratio inline. OpenAI prices cached input at
-                // 50% off, so a 60% hit ratio means ~30% real input cost saving.
-                const pct = Math.round((cached / inTok) * 100);
-                parts.push(`in ${inTok} tok (${cached} cached · ${pct}%)`);
-              } else {
-                parts.push(`in ${inTok} tok`);
-              }
+            if (typeof msg.input_tokens === "number" || typeof msg.output_tokens === "number") {
+              parts.push(tokenUsageLabel(
+                msg.input_tokens || 0,
+                msg.cached_tokens || 0,
+                msg.output_tokens || 0
+              ));
             }
-            if (typeof msg.output_tokens === "number") parts.push(`out ${msg.output_tokens} tok`);
 
             // Cumulative session totals — shown after the per-turn stats so
             // users can track the full conversation's cost as it grows.
             const s = m.session;
             if (s.in > 0 || s.out > 0) {
-              const cachePct = s.in > 0 ? Math.round((s.cached / s.in) * 100) : 0;
-              const cachedNote = s.cached > 0 ? ` (${s.cached} cached · ${cachePct}%)` : "";
-              parts.push(`累計 in ${s.in}${cachedNote} / out ${s.out} tok`);
+              const cached = Math.min(s.in, Math.max(0, s.cached));
+              const uncached = Math.max(0, s.in - cached);
+              const cachedNote = cached > 0
+                ? ` (${fmtTok(uncached)} uncached + ${fmtTok(cached)} cached)`
+                : "";
+              parts.push(`累計 input ${fmtTok(s.in)}${cachedNote} / output ${fmtTok(s.out)} / total ${fmtTok(s.in + s.out)} tok`);
             }
 
             localStatus(parts.join(" · "), false);

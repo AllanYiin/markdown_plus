@@ -41,6 +41,11 @@ Endpoints:
     GET  /api/mdp/read           → JSON block body markdown (params: path, id, children, max_lines)
     GET  /api/mdp/search         → JSON keyword search over metadata (params: path, q, limit)
     GET  /api/mdp/xref           → JSON resolved relationships (params: path, id)
+    POST /api/tokens             → JSON {tokens, encoding, estimated}
+                                    body: {"text": str}
+                                    Counts tokens with tiktoken (o200k_base) when
+                                    available; falls back to a CJK-aware heuristic
+                                    and marks estimated=true.
 
     The /api/mdp/* family is the Layer 2 block-query API: it lets an agent do
     progressive disclosure over a Markdown+ doc instead of reading the whole
@@ -53,6 +58,8 @@ import inspect
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -102,6 +109,38 @@ _TOOL_DISPATCH: dict[str, tuple[str, dict[str, str]]] = {
     "mdp_tree":           ("tree",           {}),
 }
 
+_PLAIN_BASH_TOOL: dict = {
+    "type": "function",
+    "name": "bash",
+    "description": (
+        "Run a read-only bash command in a temporary directory containing "
+        "document.md. Use normal CLI tools such as grep -n, sed -n, awk, "
+        "head, tail, wc, and nl -ba to inspect the plain Markdown file."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": (
+                    "Bash command to run. The file is available as document.md "
+                    "and as $DOC_PATH. Prefer read-only commands; do not write "
+                    "files or access the network."
+                ),
+            }
+        },
+        "required": ["command"],
+        "additionalProperties": False,
+    },
+}
+
+_BASH_DENY_RE = re.compile(
+    r"(\$\(|`|>>?|<\(|\b(rm|mv|cp|chmod|chown|dd|mkfs|mount|umount|"
+    r"curl|wget|ssh|scp|ftp|nc|ncat|telnet|python|python3|node|perl|"
+    r"ruby|php|powershell|pwsh|cmd|git|pip|npm|pnpm|yarn)\b)",
+    re.IGNORECASE,
+)
+
 
 def _load_chat_tools() -> list[dict] | None:
     """Load tool schemas with `path` stripped (we inject server-side)."""
@@ -150,14 +189,120 @@ def _execute_mdp_tool(tool_name: str, raw_args: dict, doc_path: Path) -> object:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def _execute_plain_bash(raw_args: dict, source_doc_path: Path) -> object:
+    """Run a constrained read-only bash command against a temp document.md."""
+    command = str((raw_args or {}).get("command") or "").strip()
+    if not command:
+        return {"error": "missing command"}
+    if len(command) > 1000:
+        return {"error": "command too long; keep it under 1000 chars"}
+    if _BASH_DENY_RE.search(command):
+        return {
+            "error": (
+                "command rejected by read-only guard; use grep/sed/awk/head/"
+                "tail/wc/nl against document.md without redirection, network, "
+                "or file mutation"
+            )
+        }
+    bash = shutil.which("bash")
+    if not bash:
+        return {"error": "bash executable not found on server"}
+    if os.name == "nt" and str(Path(bash)).lower().endswith("\\windows\\system32\\bash.exe"):
+        return {
+            "error": (
+                "Windows WSL bash launcher found, but this app needs a real "
+                "bash executable that can run against local temp files. Install "
+                "Git Bash, run the server inside WSL/Linux, or deploy on Linux."
+            )
+        }
+
+    with tempfile.TemporaryDirectory(prefix="plain-cli-") as td:
+        work_dir = Path(td)
+        doc_path = work_dir / "document.md"
+        doc_path.write_text(source_doc_path.read_text(encoding="utf-8"), encoding="utf-8")
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "DOC_PATH": str(doc_path),
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+        }
+        try:
+            p = subprocess.run(
+                [bash, "--noprofile", "--norc", "-lc", command],
+                cwd=str(work_dir),
+                env=env,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=8,
+            )
+        except subprocess.TimeoutExpired:
+            return {"error": "command timed out after 8 seconds", "command": command}
+
+    def limit(s: str, n: int = 12000) -> tuple[str, bool]:
+        if len(s) <= n:
+            return s, False
+        return s[:n] + "\n...[truncated]...", True
+
+    stdout, out_trunc = limit(p.stdout or "")
+    stderr, err_trunc = limit(p.stderr or "")
+    return {
+        "command": command,
+        "exit_code": p.returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+        "truncated": out_trunc or err_trunc,
+    }
+
+
+# ---- Token counting (for /api/tokens) ----
+# Lazy-loaded tiktoken encoder. `o200k_base` is the encoding used by GPT-4o /
+# 4.1 / 5 families — matches the model the chat endpoint defaults to. When
+# tiktoken isn't installed we fall back to a heuristic and mark the result as
+# estimated so the UI can render a `≈` prefix.
+_TIKTOKEN_ENC: object | None | bool = None  # None=untried, False=unavailable, encoder=ready
+
+
+def _get_tiktoken_enc():
+    global _TIKTOKEN_ENC
+    if _TIKTOKEN_ENC is None:
+        try:
+            import tiktoken  # type: ignore
+            _TIKTOKEN_ENC = tiktoken.get_encoding("o200k_base")
+        except Exception:  # noqa: BLE001
+            _TIKTOKEN_ENC = False
+    return _TIKTOKEN_ENC if _TIKTOKEN_ENC is not False else None
+
+
+def _count_tokens(text: str) -> tuple[int, bool]:
+    """Return (token_count, estimated). Uses tiktoken o200k_base when available;
+    otherwise approximates with: CJK chars ≈ 1 token each, other chars ≈ 4
+    chars per token."""
+    enc = _get_tiktoken_enc()
+    if enc is not None:
+        return len(enc.encode(text)), False
+    cjk = 0
+    for c in text:
+        # U+3000–U+9FFF: CJK Symbols/Punctuation, Hiragana, Katakana, CJK Unified
+        # U+AC00–U+D7AF: Hangul Syllables
+        # U+FF00–U+FFEF: Halfwidth & Fullwidth Forms
+        if ("　" <= c <= "鿿") or ("가" <= c <= "힯") or ("＀" <= c <= "￯"):
+            cjk += 1
+    other = len(text) - cjk
+    return cjk + (other + 3) // 4, True
+
+
 def _extract_usage(resp) -> tuple[int, int, int]:
     """Pull (input_tokens, cached_input_tokens, output_tokens) from an OpenAI
     response. Handles both shapes:
       - Responses API: usage.input_tokens / input_tokens_details.cached_tokens / output_tokens
       - Chat Completions: usage.prompt_tokens / prompt_tokens_details.cached_tokens / completion_tokens
     Cached tokens are populated whenever the chosen model supports prompt
-    caching (GPT-4o / 4.1 / 5 / o1 families all do), auto-engaged for
-    prompts ≥ 1024 tok with a matching prefix, 50% input discount."""
+    caching. Treat them as a subset of input tokens; pricing discounts are
+    model-dependent, so the UI reports raw/cached counts instead of estimating
+    currency or "effective" tokens."""
     usage = getattr(resp, "usage", None)
     if not usage:
         return 0, 0, 0
@@ -269,7 +414,30 @@ class Handler(SimpleHTTPRequestHandler):
             return self.handle_rewrite()
         if path == "/api/chat":
             return self.handle_chat()
+        if path == "/api/tokens":
+            return self.handle_tokens()
         self.send_error(404, "endpoint not found")
+
+    def handle_tokens(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            return self.json_response(400, {"error": "invalid Content-Length"})
+        raw = self.rfile.read(length) if length else b""
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception:  # noqa: BLE001
+            return self.json_response(400, {"error": "invalid JSON body"})
+        text = data.get("text", "")
+        if not isinstance(text, str):
+            return self.json_response(400, {"error": "'text' must be a string"})
+        n, estimated = _count_tokens(text)
+        return self.json_response(200, {
+            "tokens": n,
+            "encoding": "heuristic" if estimated else "o200k_base",
+            "estimated": estimated,
+            "chars": len(text),
+        })
 
     # ---- GET ----
     def do_GET(self):
@@ -505,7 +673,7 @@ class Handler(SimpleHTTPRequestHandler):
     # function_call_output items go up — instructions, tools, manifest, and
     # prior history all live on the OpenAI server keyed by response id.
     # Body: {"doc": "<full Markdown+ source>", "mode": "blocks"|"plain",
-    #        "messages": [{role, content}, ...], "head_lines": int (plain only)}
+    #        "messages": [{role, content}, ...]}
     # Streams NDJSON with event types:
     #   {type:"start", model, tools_loaded, mode, manifest_blocks?}
     #   {type:"iteration", n}
@@ -584,36 +752,31 @@ class Handler(SimpleHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
-            # ===== Plain Markdown baseline =====
-            # No tools. The LLM gets only the first `head_lines` lines of the
-            # raw document inline in instructions and must answer from
-            # whatever is visible there — this is the "no progressive disclosure"
-            # contrast condition the project benchmarks against.
+            # ===== Plain CLI baseline =====
+            # No Markdown+ tools and no block manifest. The model gets one
+            # low-level bash tool and must inspect document.md with ordinary
+            # CLI commands, which is closer to a real "plain text in terminal"
+            # workflow than custom read_lines/search functions.
             if mode == "plain":
-                try:
-                    head_lines = int(data.get("head_lines") or 200)
-                except (TypeError, ValueError):
-                    head_lines = 200
-                head_lines = max(10, min(2000, head_lines))
                 doc_lines = doc.splitlines()
-                truncated = len(doc_lines) > head_lines
-                head_text = "\n".join(doc_lines[:head_lines])
-                shown = min(len(doc_lines), head_lines)
                 instructions = (
-                    "You are answering questions about a Markdown document. "
-                    "You have NO tools. The document below is shown to you as "
-                    f"its first {shown} of {len(doc_lines)} lines"
-                    + (" (TRUNCATED — content beyond this point is not visible to you). "
-                       if truncated else " (complete). ")
-                    + "Answer only from what is actually shown. If the answer "
-                    + "would require lines you cannot see, say so explicitly.\n\n"
-                    + "--- DOCUMENT (head only) ---\n"
-                    + head_text
+                    "You are answering questions about a Markdown document in "
+                    "a plain CLI setting. The document has NOT been shown to "
+                    "you inline. You have exactly one tool: bash(command). "
+                    "The server runs your command in a temporary directory "
+                    "containing document.md, also available as $DOC_PATH. "
+                    "Use real bash text-inspection commands such as grep -n, "
+                    "sed -n '120,180p' document.md, awk, head, tail, wc -l, "
+                    "and nl -ba document.md. Do not use Markdown+ block ids "
+                    "or mdp_* assumptions. Do not modify files or access the "
+                    "network. Cite line numbers or command evidence when useful."
                 )
-                # Build `input` based on whether we're chaining. When we have
-                # a previous_response_id, OpenAI has the full prior history
-                # server-side, so the only NEW thing to send is the latest
-                # user message — everything else is already keyed by that id.
+                # Build `input` based on whether we're chaining. With
+                # previous_response_id, prior input/output items are part of
+                # the threaded context, so only the latest user message needs
+                # to be sent as input. Instructions are separate and are sent
+                # on every request below so the current bash workflow remains
+                # active on chained turns.
                 if client_previous_response_id:
                     input_items = [{"role": "user", "content": history[-1]["content"]}]
                 else:
@@ -622,102 +785,130 @@ class Handler(SimpleHTTPRequestHandler):
                 write_ndjson({
                     "type": "start",
                     "model": MODEL,
-                    "tools_loaded": 0,
+                    "tools_loaded": 1,
                     "mode": "plain",
-                    "head_lines": shown,
                     "total_lines": len(doc_lines),
-                    "truncated": truncated,
+                    "cli": "bash",
                     "chained": bool(client_previous_response_id),
                 })
 
-                # Stream the assistant text token-by-token (matches the
-                # rewriter pattern at /api/rewrite). Each token chunk is
-                # emitted as a `delta` NDJSON event so the UI can render
-                # incrementally instead of waiting for the whole reply.
-                stream_kwargs: dict = {"model": MODEL, "input": input_items}
-                if client_previous_response_id:
-                    # Chained — instructions already live on the server, don't re-send.
-                    stream_kwargs["previous_response_id"] = client_previous_response_id
-                else:
-                    # Fresh chain — ship instructions (system prompt + doc head).
-                    stream_kwargs["instructions"] = instructions
+                previous_response_id: str | None = client_previous_response_id
+                total_tool_calls = 0
+                total_input_tokens = 0
+                total_cached_tokens = 0
+                total_output_tokens = 0
+                for it in range(1, self.MAX_AGENT_ITERATIONS + 1):
+                    write_ndjson({"type": "iteration", "n": it})
+                    stream_kwargs: dict = {
+                        "model": MODEL,
+                        "tools": [_PLAIN_BASH_TOOL],
+                        "parallel_tool_calls": False,
+                        "input": input_items,
+                        "instructions": instructions,
+                    }
+                    if previous_response_id is not None:
+                        stream_kwargs["previous_response_id"] = previous_response_id
 
-                accumulated: list[str] = []
-                with client.responses.stream(**stream_kwargs) as stream:
-                    for event in stream:
-                        if getattr(event, "type", "") == "response.output_text.delta":
-                            delta = getattr(event, "delta", "") or ""
-                            if delta:
-                                accumulated.append(delta)
-                                write_ndjson({"type": "delta", "delta": delta})
-                    final = stream.get_final_response()
+                    iter_text_chunks: list[str] = []
+                    with client.responses.stream(**stream_kwargs) as stream:
+                        for event in stream:
+                            if getattr(event, "type", "") == "response.output_text.delta":
+                                delta = getattr(event, "delta", "") or ""
+                                if delta:
+                                    iter_text_chunks.append(delta)
+                                    write_ndjson({"type": "delta", "delta": delta})
+                        final = stream.get_final_response()
 
-                in_tok, cached_tok, out_tok = _extract_usage(final)
-                final_text = "".join(accumulated)
+                    in_tok, cached_tok, out_tok = _extract_usage(final)
+                    total_input_tokens += in_tok
+                    total_cached_tokens += cached_tok
+                    total_output_tokens += out_tok
+                    previous_response_id = final.id
+
+                    pending_calls = [
+                        item for item in (getattr(final, "output", None) or [])
+                        if getattr(item, "type", "") == "function_call"
+                    ]
+                    if pending_calls:
+                        next_input: list[dict] = []
+                        for call in pending_calls:
+                            total_tool_calls += 1
+                            name = call.name
+                            try:
+                                args = json.loads(call.arguments or "{}")
+                            except json.JSONDecodeError as e:
+                                args = {"_parse_error": str(e), "_raw": call.arguments}
+                            write_ndjson({
+                                "type": "tool_call", "id": call.call_id,
+                                "name": name, "args": args,
+                            })
+                            result = (
+                                _execute_plain_bash(args, doc_path)
+                                if name == "bash"
+                                else {"error": f"unknown tool: {name}"}
+                            )
+                            is_err = isinstance(result, dict) and "error" in result
+                            write_ndjson({
+                                "type": "tool_result", "id": call.call_id,
+                                "name": name, "ok": not is_err, "result": result,
+                            })
+                            next_input.append({
+                                "type": "function_call_output",
+                                "call_id": call.call_id,
+                                "output": json.dumps(result, ensure_ascii=False, default=str),
+                            })
+                        input_items = next_input
+                        continue
+
+                    final_text = "".join(iter_text_chunks)
+                    write_ndjson({
+                        "type": "done",
+                        "iterations": it,
+                        "tool_calls": total_tool_calls,
+                        "input_tokens": total_input_tokens,
+                        "cached_tokens": total_cached_tokens,
+                        "output_tokens": total_output_tokens,
+                        "final_text_len": len(final_text),
+                        "response_id": previous_response_id,
+                    })
+                    return
+
                 write_ndjson({
-                    "type": "done",
-                    "iterations": 1,
-                    "tool_calls": 0,
-                    "input_tokens": in_tok,
-                    "cached_tokens": cached_tok,
-                    "output_tokens": out_tok,
-                    "final_text_len": len(final_text),
-                    "response_id": final.id,  # client passes this back next turn for chaining
+                    "type": "error",
+                    "error": f"stopped after {self.MAX_AGENT_ITERATIONS} CLI iterations without a final answer",
                 })
                 return
 
             # ===== Markdown+ tool-loop mode (default) =====
-            # Pre-load the block manifest (id/type/status/title/line/keywords —
-            # no body) into the system prompt. Two wins:
-            #   (1) Sits inside the cacheable prefix → OpenAI prompt caching
-            #       discounts it 50% on every iteration after the first.
-            #   (2) The LLM no longer needs mdp_list_blocks to discover the
-            #       document shape. We REMOVE mdp_list_blocks from the tool
-            #       list when manifest is preloaded — soft instructions in
-            #       the system prompt aren't enough; the model still calls
-            #       it "to be safe" if the schema is visible. Take away the
-            #       option entirely.
-            try:
-                manifest = mdp_query.list_blocks(doc_path)
-            except Exception:  # noqa: BLE001 — defensive: parse error shouldn't 500 the chat
-                manifest = None
-
-            if manifest:
-                manifest_json = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
-                manifest_section = (
-                    f"\n\n--- BLOCK MANIFEST ({len(manifest)} blocks, metadata only — no body) ---\n"
-                    "This is the COMPLETE current state of the document — every block is listed.\n"
-                    "Each entry: {\"id\",\"type\",\"status\",\"title\",\"line\",\"keywords\"}\n"
-                    f"{manifest_json}"
-                )
-                # Drop mdp_list_blocks from the offered tools so the model
-                # can't waste a round trip re-fetching what's already above.
-                tools_active = [
-                    t for t in tools
-                    if t.get("function", {}).get("name") != "mdp_list_blocks"
-                ]
-            else:
-                manifest_section = ""
-                tools_active = tools
-
+            # We do NOT preload the block manifest. On real docs the manifest
+            # is ~50% of the document's tokens, and the Responses API reports
+            # input_tokens cumulatively across iterations (prompt cache helps
+            # by marking repeated prefixes as cached), so preloading it can
+            # dominate a multi-iteration turn. Instead we let the LLM search
+            # first; mdp_search_blocks returns body-context snippets that are
+            # usually enough to answer without ever reading the full block, let
+            # alone fetching the full manifest.
+            tools_active = tools
             instructions = (
                 "You are answering questions about a Markdown+ document the user uploaded. "
-                "The block manifest below is the COMPLETE list of every block — "
-                "id, type, status, title, line, keywords. Treat it as authoritative; "
-                "you do NOT need to re-fetch it. "
-                "Pick the relevant block ids directly from it, then:\n"
-                "  • mdp_search_blocks for keyword hits (returns body-context snippets — "
-                "often enough to answer without reading the full block)\n"
-                "  • mdp_read_block only when you actually need the full body text\n"
-                "Issue tool calls in parallel when you can. Cite block ids in your answer "
+                "The document has NOT been shown to you. You have 7 mdp_* tools for "
+                "progressive disclosure — use them in this order:\n"
+                "  1. mdp_search_blocks(q=\"2-4 keywords from the question\") — START HERE. "
+                "Returns matching blocks with body-context snippets, usually enough to answer directly.\n"
+                "  2. mdp_list_blocks (optionally depth=2) — only if search returns nothing relevant, "
+                "to see the document's block manifest and pick candidate ids by title/type.\n"
+                "  3. mdp_read_block(id, children=true) — only when a snippet isn't enough and "
+                "you need the full body of a specific block.\n"
+                "  4. mdp_get_block_meta / mdp_list_children / mdp_resolve_xref / mdp_tree — "
+                "for structural follow-ups (parent/child relationships, cross-references).\n"
+                "Issue independent tool calls in parallel. Cite block ids in your answer "
                 "(e.g. \"`#decision-canary` says ...\"). Keep answers concise unless asked otherwise."
-                + manifest_section
             )
             responses_tools = _to_responses_tools(tools_active)
             # Build the iter-1 input. When we're chaining from a prior turn,
-            # OpenAI already has instructions/manifest/history server-side, so
-            # the ONLY new thing is this turn's user message. When we're not
-            # chaining, ship the full user/assistant history.
+            # prior input/output items are already threaded through
+            # previous_response_id, so the only new input item is this turn's
+            # user message. Instructions are still sent on every request below.
             if client_previous_response_id:
                 input_items: list[dict] = [
                     {"role": "user", "content": history[-1]["content"]}
@@ -736,7 +927,6 @@ class Handler(SimpleHTTPRequestHandler):
                 "model": MODEL,
                 "tools_loaded": len(tools_active),
                 "mode": "blocks",
-                "manifest_blocks": len(manifest) if manifest else 0,
                 "chained": bool(client_previous_response_id),
             })
 
@@ -753,20 +943,15 @@ class Handler(SimpleHTTPRequestHandler):
                     "tools": responses_tools,
                     "parallel_tool_calls": True,
                     "input": input_items,
+                    "instructions": instructions,
                 }
-                if previous_response_id is None:
-                    # Fresh chain, iter 1 — ship instructions (system prompt +
-                    # preloaded manifest) and the full user/assistant history.
-                    # OpenAI server stores everything so later iters and later
-                    # turns can chain via previous_response_id.
-                    stream_kwargs["instructions"] = instructions
-                else:
+                if previous_response_id is not None:
                     # Chained — only the new items (latest user msg on a
                     # cross-turn chain, or function_call_output items on
-                    # within-turn iter 2+) go up. Instructions/tools/manifest/
-                    # prior history all live on the server keyed by id. This is
-                    # the key win over chat.completions, where every iteration
-                    # would re-send the whole accumulating history.
+                    # within-turn iter 2+) go up as input. Instructions and
+                    # tool definitions are request parameters, so they are sent
+                    # each time; prompt caching can mark repeated prefixes as
+                    # cached in usage.
                     stream_kwargs["previous_response_id"] = previous_response_id
 
                 # Stream the iteration. Text deltas (the final assistant answer
