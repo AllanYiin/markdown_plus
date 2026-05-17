@@ -197,12 +197,81 @@ body {
   font: inherit;
 }
 .doc-context button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.doc-context button:disabled {
+  color: var(--text-faint);
+  background: var(--surface-3);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
 .doc-context .doc-stats {
   color: var(--text-muted);
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.preview-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  height: min(780px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+}
+.preview-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.38);
+}
+.preview-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.preview-title {
+  min-width: 0;
+  flex: 1;
+}
+.preview-title strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-title span {
+  display: block;
+  color: var(--text-muted);
+  font: 12px/1.4 var(--font-mono);
+  margin-top: 2px;
+}
+.preview-close {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--r-md);
+  padding: 5px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.preview-close:hover { background: var(--accent-soft); border-color: var(--accent); }
+.preview-body {
+  flex: 1;
+  margin: 0;
+  padding: var(--sp-3);
+  overflow: auto;
+  background: var(--code-bg);
+  color: var(--code-text);
+  font: 12px/1.55 var(--font-mono);
+  white-space: pre;
 }
 
 .chat-messages {
@@ -450,6 +519,7 @@ body {
       <div class="doc-context">
         <button type="button" class="doc-load" data-doc-mode="blocks">載入 Markdown+ 文件</button>
         <button type="button" class="doc-sample" data-doc-mode="blocks">範例</button>
+        <button type="button" class="doc-preview" data-doc-mode="blocks" disabled>預覽文件</button>
         <span class="doc-stats" id="doc-stats-blocks">未載入</span>
       </div>
       <div class="chat-messages" id="messages-blocks">
@@ -471,6 +541,7 @@ body {
       <div class="doc-context">
         <button type="button" class="doc-load" data-doc-mode="plain">載入傳統 Markdown</button>
         <button type="button" class="doc-sample" data-doc-mode="plain">範例</button>
+        <button type="button" class="doc-preview" data-doc-mode="plain" disabled>預覽文件</button>
         <span class="doc-stats" id="doc-stats-plain">未載入</span>
       </div>
       <div class="chat-messages" id="messages-plain">
@@ -494,6 +565,19 @@ body {
 
 </div>
 
+<dialog class="preview-dialog" id="doc-preview-dialog" aria-labelledby="doc-preview-title">
+  <div class="preview-shell">
+    <header class="preview-head">
+      <div class="preview-title">
+        <strong id="doc-preview-title">文件預覽</strong>
+        <span id="doc-preview-meta"></span>
+      </div>
+      <button type="button" class="preview-close" id="doc-preview-close">關閉</button>
+    </header>
+    <pre class="preview-body" id="doc-preview-body"></pre>
+  </div>
+</dialog>
+
 <script>
 (function () {
   "use strict";
@@ -504,6 +588,11 @@ body {
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
   const resetBtn = document.getElementById("reset-chat");
+  const previewDialog = document.getElementById("doc-preview-dialog");
+  const previewTitle = document.getElementById("doc-preview-title");
+  const previewMeta = document.getElementById("doc-preview-meta");
+  const previewBody = document.getElementById("doc-preview-body");
+  const previewClose = document.getElementById("doc-preview-close");
 
   // Per-mode state. Both tabs share the same input box, but their loaded
   // document, conversation history, message DOM, status line, and Responses-
@@ -524,6 +613,7 @@ body {
       statusEl: document.getElementById("status-blocks"),
       panelEl: document.getElementById("panel-blocks"),
       statsEl: document.getElementById("doc-stats-blocks"),
+      previewBtn: document.querySelector('.doc-preview[data-doc-mode="blocks"]'),
       history: [],
       lastResponseId: null,
       session: newSession(),
@@ -536,6 +626,7 @@ body {
       statusEl: document.getElementById("status-plain"),
       panelEl: document.getElementById("panel-plain"),
       statsEl: document.getElementById("doc-stats-plain"),
+      previewBtn: document.querySelector('.doc-preview[data-doc-mode="plain"]'),
       history: [],
       lastResponseId: null,
       session: newSession(),
@@ -701,20 +792,27 @@ body {
     return mode === "plain" ? "Plain CLI" : "Markdown+";
   }
 
+  function docMeta(text) {
+    const lines = text ? text.split("\n").length : 0;
+    const blocks = (text.match(/^[ \t]*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/gm) || []).length;
+    const sizeKB = (text.length / 1024).toFixed(1);
+    return { lines, blocks, sizeKB };
+  }
+
   async function updateDocStats(mode) {
     const m = MODES[mode];
     const text = m.docText;
     if (!text.trim()) {
       m.statsEl.textContent = "未載入";
+      if (m.previewBtn) m.previewBtn.disabled = true;
       enableChat();
       return;
     }
-    const lines = text.split("\n").length;
-    const blocks = (text.match(/^[ \t]*-\s+\*\*#[a-z0-9][a-z0-9-]*\*\*/gm) || []).length;
-    const sizeKB = (text.length / 1024).toFixed(1);
+    const { lines, blocks, sizeKB } = docMeta(text);
     const name = m.docName ? `${m.docName} · ` : "";
     // Show what we know immediately; token count is async (tiktoken on server).
     m.statsEl.textContent = `${name}… tokens · ${blocks} blocks · ${lines} lines · ${sizeKB} KB`;
+    if (m.previewBtn) m.previewBtn.disabled = false;
     enableChat();
 
     const reqId = ++m.docStatsReq;
@@ -782,6 +880,32 @@ body {
         alert("載入範例失敗:" + e.message);
       }
     });
+  });
+
+  function openPreview(mode) {
+    const m = MODES[mode];
+    if (!m.docText.trim()) {
+      alert(`請先在 ${modeLabel(mode)} 分頁載入文件`);
+      return;
+    }
+    const { lines, blocks, sizeKB } = docMeta(m.docText);
+    previewTitle.textContent = `${modeLabel(mode)} · ${m.docName || "未命名文件"}`;
+    previewMeta.textContent = `${blocks} blocks · ${lines} lines · ${sizeKB} KB`;
+    previewBody.textContent = m.docText;
+    if (typeof previewDialog.showModal === "function") {
+      previewDialog.showModal();
+      previewClose.focus();
+    } else {
+      previewDialog.setAttribute("open", "");
+    }
+  }
+
+  document.querySelectorAll(".doc-preview").forEach((btn) => {
+    btn.addEventListener("click", () => openPreview(btn.dataset.docMode || currentMode));
+  });
+  previewClose.addEventListener("click", () => previewDialog.close());
+  previewDialog.addEventListener("click", (e) => {
+    if (e.target === previewDialog) previewDialog.close();
   });
 
   // ---- Health check (gate Send button on chat tools availability) ----
