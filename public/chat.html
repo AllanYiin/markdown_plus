@@ -172,6 +172,57 @@ body {
 }
 .chat-panel-head button.reset-btn:hover { color: var(--err); border-color: var(--err); }
 
+/* --- Mode tabs (sits below health header, above messages) --- */
+.mode-tabs {
+  display: flex; align-items: stretch; gap: 0;
+  padding: 0 var(--sp-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.mode-tab {
+  background: transparent;
+  border: none;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;  /* overlap the panel-head border */
+  transition: color var(--t-fast), border-color var(--t-fast);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.mode-tab:hover { color: var(--text); }
+.mode-tab.active {
+  color: var(--accent-deep);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.mode-tab .mode-tab-hint {
+  font-size: 11px; color: var(--text-faint); font-weight: 400;
+  font-family: var(--font-mono);
+}
+.mode-tab.active .mode-tab-hint { color: var(--accent); }
+.mode-tabs .mode-tab-controls {
+  margin-left: auto; display: inline-flex; align-items: center;
+  gap: 6px; font-size: 12px; color: var(--text-muted);
+}
+.mode-tabs .mode-tab-controls input[type="number"] {
+  width: 64px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font: inherit; font-family: var(--font-mono);
+}
+.mode-tabs .mode-tab-controls input[type="number"]:focus {
+  outline: none; border-color: var(--accent);
+}
+
+/* Each mode owns a separate messages container; we toggle display. */
+.mode-panel { display: none; flex: 1; min-height: 0; flex-direction: column; }
+.mode-panel.active { display: flex; }
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -413,20 +464,56 @@ body {
   <section class="chat-panel">
     <header class="chat-panel-head">
       <span class="health" id="chat-health">checking…</span>
-      <button class="reset-btn" id="reset-chat" type="button" title="清空對話歷史">清空對話</button>
+      <button class="reset-btn" id="reset-chat" type="button" title="清空當前 tab 的對話歷史">清空對話</button>
     </header>
-    <div class="chat-messages" id="messages">
-      <div class="placeholder-card">
-        <h3>基於 Markdown+ 文件問答</h3>
-        <ol>
-          <li>左側點「載入文件」或「範例」,匯入一份 .mdp.md</li>
-          <li>右下方輸入問題,送出</li>
-          <li>LLM 會用 7 個 <code>mdp_*</code> 工具(list / read / search / xref / tree …)漸進式讀取文件</li>
-          <li>每次工具呼叫的「name + args」與回傳結果都會以可摺疊卡片顯示</li>
-        </ol>
-      </div>
+    <div class="mode-tabs" role="tablist">
+      <button class="mode-tab active" role="tab" data-mode="blocks" type="button">
+        Markdown+
+        <span class="mode-tab-hint">tools</span>
+      </button>
+      <button class="mode-tab" role="tab" data-mode="plain" type="button">
+        Plain Markdown
+        <span class="mode-tab-hint">first N lines</span>
+      </button>
+      <span class="mode-tab-controls" id="plain-controls" style="display:none;">
+        前
+        <input type="number" id="head-lines" min="10" max="2000" step="10" value="200">
+        行
+      </span>
     </div>
-    <div class="status-line" id="chat-status"></div>
+
+    <!-- ===== Tab 1: Markdown+ (block-tool agent loop) ===== -->
+    <div class="mode-panel active" id="panel-blocks" role="tabpanel">
+      <div class="chat-messages" id="messages-blocks">
+        <div class="placeholder-card">
+          <h3>Markdown+ 漸進式工具讀取</h3>
+          <ol>
+            <li>左側點「載入文件」或「範例」,匯入一份 .mdp.md</li>
+            <li>右下方輸入問題,送出</li>
+            <li>LLM 會用 7 個 <code>mdp_*</code> 工具(list / read / search / xref / tree …)漸進式讀取文件</li>
+            <li>每次工具呼叫的「name + args」與回傳結果都會以可摺疊卡片顯示</li>
+          </ol>
+        </div>
+      </div>
+      <div class="status-line" id="status-blocks"></div>
+    </div>
+
+    <!-- ===== Tab 2: Plain Markdown (head-N-lines baseline) ===== -->
+    <div class="mode-panel" id="panel-plain" role="tabpanel">
+      <div class="chat-messages" id="messages-plain">
+        <div class="placeholder-card">
+          <h3>Plain Markdown 前 N 行 baseline</h3>
+          <ol>
+            <li>把文件當作 <strong>沒有 block 結構</strong> 的純 Markdown 看待</li>
+            <li>LLM <strong>沒有任何工具</strong>,只能看到文件的<strong>前 N 行</strong>就要直接回答</li>
+            <li>右上 <code>前 N 行</code> 可調(預設 200),用來模擬 token budget 限制</li>
+            <li>對比 Markdown+ 模式:看誰能在相同 budget 下答得更準</li>
+          </ol>
+        </div>
+      </div>
+      <div class="status-line" id="status-plain"></div>
+    </div>
+
     <form class="chat-form" id="chat-form" autocomplete="off">
       <textarea id="chat-input" placeholder="先載入文件再開始問問題…" disabled></textarea>
       <button id="chat-send" type="submit" disabled>送出</button>
@@ -444,17 +531,33 @@ body {
   const fileLoad = document.getElementById("file-load");
   const fileInput = document.getElementById("file-input");
   const sampleLoad = document.getElementById("sample-load");
-  const messagesEl = document.getElementById("messages");
   const chatHealth = document.getElementById("chat-health");
-  const chatStatus = document.getElementById("chat-status");
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
   const resetBtn = document.getElementById("reset-chat");
+  const headLinesInput = document.getElementById("head-lines");
+  const plainControls = document.getElementById("plain-controls");
 
-  // Conversation history sent to server each turn.
-  // Each entry: {role: "user"|"assistant", content: string}
-  let history = [];
+  // Per-mode state. Both tabs share the same loaded document and same input
+  // box; their conversation history, message DOM, and status line are kept
+  // independent so users can run the same question through both pipelines and
+  // compare side by side without one polluting the other.
+  const MODES = {
+    blocks: {
+      messagesEl: document.getElementById("messages-blocks"),
+      statusEl: document.getElementById("status-blocks"),
+      panelEl: document.getElementById("panel-blocks"),
+      history: [],
+    },
+    plain: {
+      messagesEl: document.getElementById("messages-plain"),
+      statusEl: document.getElementById("status-plain"),
+      panelEl: document.getElementById("panel-plain"),
+      history: [],
+    },
+  };
+  let currentMode = "blocks";
   let docLoaded = false;
   let chatReady = false;
 
@@ -678,9 +781,11 @@ body {
     }
   }
 
-  // ---- Rendering helpers ----
+  // ---- Rendering helpers (all scoped to the active mode's panel) ----
+  function getMode() { return MODES[currentMode]; }
+
   function clearPlaceholder() {
-    const ph = messagesEl.querySelector(".placeholder-card");
+    const ph = getMode().messagesEl.querySelector(".placeholder-card");
     if (ph) ph.remove();
   }
 
@@ -689,7 +794,7 @@ body {
     const wrap = document.createElement("div");
     wrap.className = "msg msg-user";
     wrap.innerHTML = `<div class="msg-role">U</div><div class="msg-body">${esc(text)}</div>`;
-    messagesEl.appendChild(wrap);
+    getMode().messagesEl.appendChild(wrap);
     scrollToBottom();
   }
 
@@ -698,7 +803,7 @@ body {
     const wrap = document.createElement("div");
     wrap.className = "msg msg-assistant";
     wrap.innerHTML = `<div class="msg-role">AI</div><div class="msg-body"></div>`;
-    messagesEl.appendChild(wrap);
+    getMode().messagesEl.appendChild(wrap);
     scrollToBottom();
     return wrap.querySelector(".msg-body");
   }
@@ -719,7 +824,7 @@ body {
       </summary>
       <div class="tool-body">${formatPrettyJsonHtml(args)}</div>
     `;
-    messagesEl.appendChild(det);
+    getMode().messagesEl.appendChild(det);
     scrollToBottom();
     return det;
   }
@@ -743,31 +848,59 @@ body {
       </summary>
       <div class="tool-body">${formatPrettyJsonHtml(result)}</div>
     `;
-    messagesEl.appendChild(det);
+    getMode().messagesEl.appendChild(det);
     scrollToBottom();
     return det;
   }
 
   function scrollToBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    const m = getMode();
+    m.messagesEl.scrollTop = m.messagesEl.scrollHeight;
+  }
+
+  function setStatus(text, isErr) {
+    const s = getMode().statusEl;
+    s.textContent = text || "";
+    s.classList.toggle("err", !!isErr);
   }
 
   function resetConversation() {
-    history = [];
-    messagesEl.innerHTML = `
+    const m = getMode();
+    m.history = [];
+    const isPlain = currentMode === "plain";
+    m.messagesEl.innerHTML = `
       <div class="placeholder-card">
         <h3>對話已清空</h3>
         <ol>
           <li>${docLoaded ? "文件還在,可直接開始問問題" : "請先載入文件"}</li>
-          <li>每次問答都是一輪 agent loop(若需要 LLM 會主動呼叫工具)</li>
+          <li>${isPlain
+              ? "Plain 模式:LLM 只看得到文件前 N 行,沒有任何工具可用"
+              : "Markdown+ 模式:LLM 會用 mdp_* 工具漸進式讀取文件"}</li>
         </ol>
       </div>`;
-    chatStatus.textContent = "";
-    chatStatus.classList.remove("err");
+    setStatus("", false);
   }
 
   resetBtn.addEventListener("click", () => {
-    if (history.length === 0 || confirm("清空目前的對話歷史?")) resetConversation();
+    if (getMode().history.length === 0 || confirm("清空當前 tab 的對話歷史?")) resetConversation();
+  });
+
+  // ---- Tab switching ----
+  document.querySelectorAll(".mode-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const mode = tab.dataset.mode;
+      if (mode === currentMode) return;
+      currentMode = mode;
+      document.querySelectorAll(".mode-tab").forEach((t) =>
+        t.classList.toggle("active", t.dataset.mode === mode)
+      );
+      Object.entries(MODES).forEach(([name, m]) =>
+        m.panelEl.classList.toggle("active", name === mode)
+      );
+      plainControls.style.display = mode === "plain" ? "" : "none";
+      enableChat();
+      chatInput.focus();
+    });
   });
 
   // ---- Send a chat turn ----
@@ -777,25 +910,35 @@ body {
     const text = chatInput.value.trim();
     if (!text) return;
 
+    // Capture the mode at submit-time. Streaming responses always write back to
+    // *this* mode's panel even if the user clicks a different tab mid-stream.
+    const mode = currentMode;
+    const m = MODES[mode];
+
     addUserMessage(text);
-    history.push({ role: "user", content: text });
+    m.history.push({ role: "user", content: text });
     chatInput.value = "";
     chatInput.disabled = true;
     chatSend.disabled = true;
-    chatStatus.textContent = "送出中…";
-    chatStatus.classList.remove("err");
+    setStatus("送出中…", false);
 
-    // Track per-tool-call summary cards so the matching result attaches below
-    const callsById = new Map();
     let assistantBody = null;
     let assistantBuf = "";
     const t0 = performance.now();
+
+    // Body shape differs by mode — `mode:"plain"` skips the tool loop and
+    // tells the server to feed only the first `head_lines` lines of the doc
+    // as the LLM's entire view of the document.
+    const body = { mode, doc: docSource.value, messages: m.history };
+    if (mode === "plain") {
+      body.head_lines = Math.max(10, parseInt(headLinesInput.value, 10) || 200);
+    }
 
     try {
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc: docSource.value, messages: history }),
+        body: JSON.stringify(body),
       });
       const ct = r.headers.get("content-type") || "";
       if (!r.ok && ct.includes("application/json")) {
@@ -805,7 +948,14 @@ body {
       const reader = r.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buf = "";
-      let toolCalls = 0;
+
+      // Local helpers that always write to the panel captured at submit time,
+      // independent of whatever the user is currently looking at.
+      const localAppend = (el) => { m.messagesEl.appendChild(el); m.messagesEl.scrollTop = m.messagesEl.scrollHeight; };
+      const localStatus = (text, isErr) => {
+        m.statusEl.textContent = text || "";
+        m.statusEl.classList.toggle("err", !!isErr);
+      };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -820,41 +970,68 @@ body {
           try { msg = JSON.parse(line); } catch (e) { continue; }
 
           if (msg.type === "start") {
-            chatStatus.textContent = `LLM 思考中… (${msg.model}, ${msg.tools_loaded} tools)`;
+            const toolsLabel = mode === "plain"
+              ? `plain, head ${body.head_lines} lines`
+              : `${msg.tools_loaded} tools`;
+            localStatus(`LLM 思考中… (${msg.model}, ${toolsLabel})`, false);
           } else if (msg.type === "iteration") {
-            chatStatus.textContent = `iteration ${msg.n}…`;
+            localStatus(`iteration ${msg.n}…`, false);
           } else if (msg.type === "tool_call") {
-            toolCalls++;
-            const card = addToolCallCard(msg.name, msg.args);
-            callsById.set(msg.id, card);
-            chatStatus.textContent = `呼叫 ${msg.name}…`;
+            // Only Markdown+ mode emits these.
+            addToolCallCard(msg.name, msg.args);
+            localStatus(`呼叫 ${msg.name}…`, false);
           } else if (msg.type === "tool_result") {
             addToolResultCard(msg.name || "", msg.result, !!msg.ok);
           } else if (msg.type === "delta") {
-            if (!assistantBody) assistantBody = addAssistantMessage();
+            if (!assistantBody) {
+              const wrap = document.createElement("div");
+              wrap.className = "msg msg-assistant";
+              wrap.innerHTML = `<div class="msg-role">AI</div><div class="msg-body"></div>`;
+              const ph = m.messagesEl.querySelector(".placeholder-card");
+              if (ph) ph.remove();
+              localAppend(wrap);
+              assistantBody = wrap.querySelector(".msg-body");
+            }
             assistantBuf += msg.delta;
-            // Render as markdown so **bold**, lists, `code`, ``` fences look proper.
-            // Done on every delta tick — for typical chat-size answers this is cheap.
             assistantBody.innerHTML = renderMarkdown(assistantBuf);
-            scrollToBottom();
+            m.messagesEl.scrollTop = m.messagesEl.scrollHeight;
           } else if (msg.type === "done") {
             const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-            chatStatus.textContent = `完成 · ${elapsed}s · ${msg.iterations} iter · ${msg.tool_calls} tool calls · ${msg.output_tokens || "?"} tokens`;
+            const parts = [`完成 · ${elapsed}s`];
+            if (msg.iterations) parts.push(`${msg.iterations} iter`);
+            if (typeof msg.tool_calls === "number") parts.push(`${msg.tool_calls} tool calls`);
+            if (typeof msg.input_tokens === "number") {
+              const inTok = msg.input_tokens;
+              const cached = typeof msg.cached_tokens === "number" ? msg.cached_tokens : 0;
+              if (cached > 0 && inTok > 0) {
+                // Show cache hit ratio inline. OpenAI prices cached input at
+                // 50% off, so a 60% hit ratio means ~30% real input cost saving.
+                const pct = Math.round((cached / inTok) * 100);
+                parts.push(`in ${inTok} tok (${cached} cached · ${pct}%)`);
+              } else {
+                parts.push(`in ${inTok} tok`);
+              }
+            }
+            if (typeof msg.output_tokens === "number") parts.push(`out ${msg.output_tokens} tok`);
+            localStatus(parts.join(" · "), false);
             if (assistantBuf.trim()) {
-              history.push({ role: "assistant", content: assistantBuf });
+              m.history.push({ role: "assistant", content: assistantBuf });
             }
           } else if (msg.type === "error") {
-            chatStatus.textContent = "錯誤:" + msg.error;
-            chatStatus.classList.add("err");
+            localStatus("錯誤:" + msg.error, true);
             if (!assistantBody) {
-              addAssistantMessage().textContent = "❌ " + msg.error;
+              const wrap = document.createElement("div");
+              wrap.className = "msg msg-assistant";
+              wrap.innerHTML = `<div class="msg-role">AI</div><div class="msg-body"></div>`;
+              localAppend(wrap);
+              wrap.querySelector(".msg-body").textContent = "❌ " + msg.error;
             }
           }
         }
       }
     } catch (e) {
-      chatStatus.textContent = "網路 / 後端錯誤:" + e.message;
-      chatStatus.classList.add("err");
+      m.statusEl.textContent = "網路 / 後端錯誤:" + e.message;
+      m.statusEl.classList.add("err");
     } finally {
       chatInput.disabled = false;
       chatSend.disabled = false;

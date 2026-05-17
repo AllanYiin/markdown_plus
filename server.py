@@ -150,6 +150,22 @@ def _execute_mdp_tool(tool_name: str, raw_args: dict, doc_path: Path) -> object:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def _extract_usage(resp) -> tuple[int, int, int]:
+    """Pull (prompt_tokens, cached_prompt_tokens, completion_tokens) out of an
+    OpenAI ChatCompletion response. `cached_tokens` lives under
+    usage.prompt_tokens_details.cached_tokens — present on gpt-4o family when
+    prompt caching kicks in (auto for prompts ≥ 1024 tok with matching prefix,
+    50% input discount). Returns 0s if any field is missing."""
+    usage = getattr(resp, "usage", None)
+    if not usage:
+        return 0, 0, 0
+    in_tok = int(getattr(usage, "prompt_tokens", 0) or 0)
+    out_tok = int(getattr(usage, "completion_tokens", 0) or 0)
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = int(getattr(details, "cached_tokens", 0) or 0) if details else 0
+    return in_tok, cached, out_tok
+
+
 def build_prompt(kind: str, content: str) -> str:
     tmpl = PROMPTS[kind].read_text(encoding="utf-8")
     placeholder = "{{markdown_doc}}" if kind == "markdown" else "{{html_doc}}"
@@ -469,9 +485,9 @@ class Handler(SimpleHTTPRequestHandler):
     #   {type:"tool_call", id, name, args}
     #   {type:"tool_result", id, ok, result|error}
     #   {type:"delta", delta}           — assistant text chunks
-    #   {type:"done", iterations, tool_calls, output_tokens}
+    #   {type:"done", iterations, tool_calls, input_tokens, cached_tokens, output_tokens}
     #   {type:"error", error}
-    MAX_AGENT_ITERATIONS = 6
+    MAX_AGENT_ITERATIONS = 15
 
     def handle_chat(self):
         # ---- Validate body ----
@@ -485,6 +501,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         doc = data.get("doc", "")
         history = data.get("messages") or []
+        # mode = "blocks" (default — Markdown+ tool-loop) or "plain" (head-N-lines baseline)
+        mode = data.get("mode", "blocks")
+        if mode not in ("blocks", "plain"):
+            return self.json_response(400, {"error": f"unknown mode: {mode!r}"})
         if not doc.strip():
             return self.json_response(400, {"error": "doc is empty"})
         if not isinstance(history, list) or not history:
@@ -492,8 +512,8 @@ class Handler(SimpleHTTPRequestHandler):
         if not os.environ.get("OPENAI_API_KEY"):
             return self.json_response(500, {"error": "OPENAI_API_KEY not set"})
 
-        tools = _load_chat_tools()
-        if tools is None:
+        tools = _load_chat_tools() if mode == "blocks" else None
+        if mode == "blocks" and tools is None:
             return self.json_response(500, {"error": "tools schema unavailable"})
 
         try:
@@ -532,6 +552,62 @@ class Handler(SimpleHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
+            # ===== Plain Markdown baseline =====
+            # No tools. The LLM gets only the first `head_lines` lines of the
+            # raw document inline in the system prompt and must answer from
+            # whatever is visible there — this is the "no progressive disclosure"
+            # contrast condition the project benchmarks against.
+            if mode == "plain":
+                try:
+                    head_lines = int(data.get("head_lines") or 200)
+                except (TypeError, ValueError):
+                    head_lines = 200
+                head_lines = max(10, min(2000, head_lines))
+                doc_lines = doc.splitlines()
+                truncated = len(doc_lines) > head_lines
+                head_text = "\n".join(doc_lines[:head_lines])
+                shown = min(len(doc_lines), head_lines)
+                plain_system = (
+                    "You are answering questions about a Markdown document. "
+                    "You have NO tools. The document below is shown to you as "
+                    f"its first {shown} of {len(doc_lines)} lines"
+                    + (" (TRUNCATED — content beyond this point is not visible to you). "
+                       if truncated else " (complete). ")
+                    + "Answer only from what is actually shown. If the answer "
+                    + "would require lines you cannot see, say so explicitly.\n\n"
+                    + "--- DOCUMENT (head only) ---\n"
+                    + head_text
+                )
+                messages = [{"role": "system", "content": plain_system}]
+                messages.extend(history)
+
+                write_ndjson({
+                    "type": "start",
+                    "model": MODEL,
+                    "tools_loaded": 0,
+                    "mode": "plain",
+                    "head_lines": shown,
+                    "total_lines": len(doc_lines),
+                    "truncated": truncated,
+                })
+
+                resp = client.chat.completions.create(model=MODEL, messages=messages)
+                in_tok, cached_tok, out_tok = _extract_usage(resp)
+                final_text = (resp.choices[0].message.content or "")
+                if final_text:
+                    write_ndjson({"type": "delta", "delta": final_text})
+                write_ndjson({
+                    "type": "done",
+                    "iterations": 1,
+                    "tool_calls": 0,
+                    "input_tokens": in_tok,
+                    "cached_tokens": cached_tok,
+                    "output_tokens": out_tok,
+                    "final_text_len": len(final_text),
+                })
+                return
+
+            # ===== Markdown+ tool-loop mode (default) =====
             # Light system prompt so the LLM understands the document context.
             messages: list[dict] = [
                 {"role": "system", "content": (
@@ -544,9 +620,11 @@ class Handler(SimpleHTTPRequestHandler):
             ]
             messages.extend(history)
 
-            write_ndjson({"type": "start", "model": MODEL, "tools_loaded": len(tools)})
+            write_ndjson({"type": "start", "model": MODEL, "tools_loaded": len(tools), "mode": "blocks"})
 
             total_tool_calls = 0
+            total_input_tokens = 0
+            total_cached_tokens = 0
             total_output_tokens = 0
             final_text = ""
             for it in range(1, self.MAX_AGENT_ITERATIONS + 1):
@@ -558,9 +636,10 @@ class Handler(SimpleHTTPRequestHandler):
                     tools=tools,
                     tool_choice="auto",
                 )
-                usage = getattr(resp, "usage", None)
-                if usage:
-                    total_output_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+                in_tok, cached_tok, out_tok = _extract_usage(resp)
+                total_input_tokens += in_tok
+                total_cached_tokens += cached_tok
+                total_output_tokens += out_tok
 
                 msg = resp.choices[0].message
                 tool_calls = getattr(msg, "tool_calls", None) or []
@@ -616,6 +695,8 @@ class Handler(SimpleHTTPRequestHandler):
                     "type": "done",
                     "iterations": it,
                     "tool_calls": total_tool_calls,
+                    "input_tokens": total_input_tokens,
+                    "cached_tokens": total_cached_tokens,
                     "output_tokens": total_output_tokens,
                     "final_text_len": len(final_text),
                 })
