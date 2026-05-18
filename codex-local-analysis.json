@@ -1,0 +1,225 @@
+{
+  "question": "從性價比來看該選擇哪個向量資料庫?",
+  "answer": "Milvus",
+  "files": {
+    "plain": {
+      "path": "D:\\PycharmProjects\\TokenSaving\\benchmark\\results\\research_report\\research_report_03\\markdown.md",
+      "chars": 25792,
+      "lines": 1423,
+      "tokens": 12781
+    },
+    "markdown_plus": {
+      "path": "D:\\PycharmProjects\\TokenSaving\\benchmark\\results\\research_report\\research_report_03\\markdown_plus.md",
+      "chars": 41046,
+      "lines": 1411,
+      "tokens": 18355
+    }
+  },
+  "plain_cli": [
+    {
+      "command": "grep -nEi '性價比|成本與性能比|成本優先|最低長期成本|Milvus' \"$DOC_PATH\" | head -n 80",
+      "exit_code": 0,
+      "stdout": "9:1. **Milvus**\n24:| 項目 | Milvus | Weaviate | Pinecone |\n38:| Milvus | 18–35 ms | 45–90 ms | 90–180 ms |\n46:| Milvus | 自管 Kubernetes | USD 2,500–6,500 |\n50:> 整體而言，若組織具備 Kubernetes、儲存、監控與效能調校能力，**Milvus 在成本與性能比上最具優勢**。若重視開發體驗、物件結構與 GraphQL/REST API 整合，**Weaviate 較具生產力優勢**。若目標是降低維運負擔與快速交付，**Pinecone 是最省心但成本通常較高的選項**。\n89:4. 哪些情境下應選擇 Milvus、Weaviate 或 Pinecone？\n116:## 3.1 Milvus\n118:Milvus 是開源向量資料庫，常用於大規模 ANN 搜尋。其核心特色包括：\n139:Milvus 的優點是高性能與可控性強，但分散式部署與維運複雜度較高。\n307:| Milvus | 3–6 QueryNode、2–3 DataNode、2 IndexNode、etcd、Pulsar/Kafka、S3/MinIO |\n383:    # Replace with Milvus / Weaviate / Pinecone SDK call.\n548:| Milvus | 18–30 ms | 45–75 ms | 90–150 ms | 500–2,000 |\n554:1. **Milvus 與 Pinecone 在純向量搜尋下通常具有較佳延遲表現。**\n573:| Milvus | 22–40 ms | 60–110 ms | 120–220 ms |\n598:| Milvus | 35–80 ms | 100–220 ms | 220–450 ms | segment pruning 與 candidate 不足 |\n629:## 8.2 Milvus 成本估算\n702:- 架構相對 Milvus 單純\n766:| Milvus | 低 | 低至中 | 高 | 高 | 大規模、高性能、具 Infra 團隊 |\n774:| 項目 | Milvus | Weaviate | Pinecone |\n787:| 項目 | Milvus | Weaviate | Pinecone |\n799:| 維運項目 | Milvus | Weaviate | Pinecone |\n855:Milvus: 45–75 ms\n863:Milvus: 100–220 ms\n881:但對於 1000 萬筆以上且長期穩定運行的 workload，若 QPS 較高，託管服務費用可能高於自管 Milvus 或 Weaviate。\n885:## 10.4 發現四：Milvus 性能與成本比佳，但需要成熟平台能力\n887:Milvus 的優勢包括：\n901:因此 Milvus 適合已有平台工程或資料基礎設施團隊的組織。\n1010:## 13.1 建議選擇 Milvus 的情境\n1012:若符合以下條件，建議優先評估 Milvus：\n1073:## 14.1 若以成本優先\n1077:1. **Milvus 自管**\n1083:- Milvus 自管在大規模資料量下單位成本較低。\n1095:3. **Milvus 自管**\n1100:- Weaviate 自管複雜度低於 Milvus。\n1101:- Milvus 元件多，需要較成熟的 SRE 能力。\n1109:1. **Milvus**\n1115:- Milvus 提供多索引選擇，可依場景最佳化。\n1127:3. **Milvus**\n1133:- Milvus 更偏底層基礎設施導向。\n1257:| P95 latency per dollar | 性價比 |\n1266:在 1000 萬筆向量規模下，Milvus、Weaviate 與 Pinecone 均可支援生產級向量搜尋，但三者最佳適用場景不同。\n1272:| Milvus 最適合成本與性能最佳化 | 適合具備平台工程能力的團隊 |\n1283:- **最低長期成本與高性能**：選擇 **Milvus 自管**\n1287:綜合本次調查，若組織已有 Kubernetes 與資料平台維運能力，建議以 **Milvus 作為主要 PoC 對象**，並以 **Pinecone 作為託管服務對照組**，同時納入 **Weaviate 評估其 hybrid search 與 schema-driven API 對產品開發效率的收益**。\n1297:| T01 | Milvus | HNSW | None | 32 | 10 | 0.95 |\n1298:| T02 | Milvus | HNSW | tenant_id | 64 | 10 | 0.95 |\n1299:| T03 | Milvus | IVF_FLAT | None | 64 | 10 | 0.92 |\n1314:database: milvus | weaviate | pinecone\n1373:### Milvus\n1416:| 是否已有 Kubernetes 維運能力？ | Milvus / Weaviate 可行 | Pinecone 較佳 |\n1417:| 是否需要 P95 < 100 ms？ | Milvus / Pinecone 優先 | Weaviate 也可評估 |\n1418:| 是否成本高度敏感？ | Milvus 優先 | Pinecone 可降低人力成本 |\n1419:| 是否需要 hybrid search？ | Weaviate 優先 | Milvus/Pinecone 需額外組合 |\n1420:| 是否需要快速 PoC？ | Pinecone / Weaviate 優先 | Milvus 較慢 |\n1423:| 是否資料量會成長到 1 億筆？ | Milvus / Pinecone 優先 | Weaviate 需審慎規劃 |\n",
+      "stderr": "",
+      "truncated": false,
+      "fallback": "python-readonly-cli",
+      "stdout_tokens": 1351,
+      "command_tokens": 36
+    },
+    {
+      "command": "nl -ba \"$DOC_PATH\" | sed -n '1060,1090p'",
+      "exit_code": 0,
+      "stdout": "  1060\t- 專案仍在產品驗證或早期成長階段\n  1061\t\n  1062\t適用場景：\n  1063\t\n  1064\t- 快速 PoC\n  1065\t- 商業 SaaS 初期產品\n  1066\t- 無平台團隊的新產品線\n  1067\t- 需要快速擴展但尚未確定最終 workload 的 RAG 應用\n  1068\t\n  1069\t---\n  1070\t\n  1071\t# 14. 建議決策\n  1072\t\n  1073\t## 14.1 若以成本優先\n  1074\t\n  1075\t建議排序：\n  1076\t\n  1077\t1. **Milvus 自管**\n  1078\t2. **Weaviate 自管**\n  1079\t3. **Pinecone**\n  1080\t\n  1081\t理由：\n  1082\t\n  1083\t- Milvus 自管在大規模資料量下單位成本較低。\n  1084\t- Weaviate 架構較簡單但 HNSW 記憶體成本可能較高。\n  1085\t- Pinecone 避免維運但服務費較高。\n  1086\t\n  1087\t---\n  1088\t\n  1089\t## 14.2 若以維運效率優先\n  1090\t\n",
+      "stderr": "",
+      "truncated": false,
+      "fallback": "python-readonly-cli",
+      "stdout_tokens": 345,
+      "command_tokens": 19
+    },
+    {
+      "command": "nl -ba \"$DOC_PATH\" | sed -n '1278,1288p'",
+      "exit_code": 0,
+      "stdout": "  1278\t\n  1279\t## 16.2 推薦決策\n  1280\t\n  1281\t若本案目標是：\n  1282\t\n  1283\t- **最低長期成本與高性能**：選擇 **Milvus 自管**\n  1284\t- **最佳開發體驗與語意搜尋功能**：選擇 **Weaviate**\n  1285\t- **最快上線與最低維運負擔**：選擇 **Pinecone**\n  1286\t\n  1287\t綜合本次調查，若組織已有 Kubernetes 與資料平台維運能力，建議以 **Milvus 作為主要 PoC 對象**，並以 **Pinecone 作為託管服務對照組**，同時納入 **Weaviate 評估其 hybrid search 與 schema-driven API 對產品開發效率的收益**。\n  1288\t\n",
+      "stderr": "",
+      "truncated": false,
+      "fallback": "python-readonly-cli",
+      "stdout_tokens": 219,
+      "command_tokens": 19
+    }
+  ],
+  "markdown_plus": [
+    {
+      "function": "mdp_search_blocks",
+      "args": {
+        "any_of": [
+          "性價比",
+          "成本優先",
+          "最低長期成本",
+          "性能最佳化"
+        ],
+        "limit": 8
+      },
+      "result": [
+        {
+          "id": "cost-first-ranking",
+          "type": "decision",
+          "status": "proposed",
+          "title": "若以成本優先，建議排序：",
+          "line": 1061,
+          "keywords": [
+            "成本",
+            "資料",
+            "服務",
+            "維運",
+            "自管"
+          ],
+          "matched": [
+            "成本優先"
+          ],
+          "snippets": [
+            {
+              "field": "title",
+              "keyword": "成本優先",
+              "snippet": "若以成本優先，建議排序…"
+            },
+            {
+              "field": "summary",
+              "keyword": "成本優先",
+              "snippet": "若以成本優先，建議排序…"
+            },
+            {
+              "field": "body",
+              "keyword": "成本優先",
+              "snippet": "…若以成本優先，建議排序…"
+            }
+          ]
+        },
+        {
+          "id": "conclusion-summary",
+          "type": "table",
+          "status": "active",
+          "title": "最終結論是 Milvus 偏向成本與性能最佳化，Weaviate 偏向語意搜尋開發體驗，Pinecone 偏向低維運與快速上線；filter 設計、記憶體成本與…",
+          "line": 1237,
+          "keywords": [
+            "結論",
+            "說明",
+            "成本",
+            "資料",
+            "查詢",
+            "維運",
+            "搜尋"
+          ],
+          "matched": [
+            "性能最佳化"
+          ],
+          "snippets": [
+            {
+              "field": "title",
+              "keyword": "性能最佳化",
+              "snippet": "…偏向成本與性能最佳化，Weav…"
+            },
+            {
+              "field": "body",
+              "keyword": "性能最佳化",
+              "snippet": "…適合成本與性能最佳化 | 適合…"
+            },
+            {
+              "field": "body",
+              "keyword": "性能最佳化",
+              "snippet": "…偏向成本與性能最佳化，Weav…"
+            }
+          ]
+        },
+        {
+          "id": "cost-monitoring-metrics",
+          "type": "table",
+          "status": "active",
+          "title": "成本監控應同時追蹤查詢成本、儲存成本、CPU 效率、RAM 效率、P95 latency per dollar、index build cost、backup …",
+          "line": 1217,
+          "keywords": [
+            "指標",
+            "用途",
+            "成本",
+            "查詢",
+            "索引",
+            "資料",
+            "服務"
+          ],
+          "matched": [
+            "性價比"
+          ],
+          "snippets": [
+            {
+              "field": "body",
+              "keyword": "性價比",
+              "snippet": "…ar | 性價比 |…"
+            }
+          ]
+        },
+        {
+          "id": "recommended-decision",
+          "type": "decision",
+          "status": "proposed",
+          "title": "若本案目標是：",
+          "line": 1252,
+          "keywords": [
+            "成本",
+            "資料",
+            "維運",
+            "服務",
+            "搜尋"
+          ],
+          "matched": [
+            "最低長期成本"
+          ],
+          "snippets": [
+            {
+              "field": "body",
+              "keyword": "最低長期成本",
+              "snippet": "…- **最低長期成本與高性能*…"
+            }
+          ]
+        }
+      ],
+      "result_tokens": 635
+    },
+    {
+      "function": "mdp_read_block",
+      "args": {
+        "id": "cost-first-ranking",
+        "include_children": true
+      },
+      "result": {
+        "id": "cost-first-ranking",
+        "type": "decision",
+        "line": 1061,
+        "end_line": 1073,
+        "include_children": true,
+        "truncated": false,
+        "body": "  - **#cost-first-ranking** `type:decision` `status:proposed` `updated:2026-05-13`\n    若以成本優先，建議排序：\n\n    1. **Milvus 自管**\n    2. **Weaviate 自管**\n    3. **Pinecone**\n\n    理由：\n\n    - Milvus 自管在大規模資料量下單位成本較低。\n    - Weaviate 架構較簡單但 HNSW 記憶體成本可能較高。\n    - Pinecone 避免維運但服務費較高。\n"
+      },
+      "result_tokens": 196
+    },
+    {
+      "function": "mdp_read_block",
+      "args": {
+        "id": "recommended-decision",
+        "include_children": true
+      },
+      "result": {
+        "id": "recommended-decision",
+        "type": "decision",
+        "line": 1252,
+        "end_line": 1260,
+        "include_children": true,
+        "truncated": false,
+        "body": "  - **#recommended-decision** `type:decision` `status:proposed` `updated:2026-05-13`\n    若本案目標是：\n\n    - **最低長期成本與高性能**：選擇 **Milvus 自管**\n    - **最佳開發體驗與語意搜尋功能**：選擇 **Weaviate**\n    - **最快上線與最低維運負擔**：選擇 **Pinecone**\n\n    綜合本次調查，若組織已有 Kubernetes 與資料平台維運能力，建議以 **Milvus 作為主要 PoC 對象**，並以 **Pinecone 作為託管服務對照組**，同時納入 **Weaviate 評估其 hybrid search 與 schema-driven API 對產品開發效率的收益**。\n"
+      },
+      "result_tokens": 246
+    }
+  ],
+  "context_token_summary": {
+    "plain_cli": 1989,
+    "markdown_plus": 1077
+  }
+}
