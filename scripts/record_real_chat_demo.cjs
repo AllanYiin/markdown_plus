@@ -21,11 +21,12 @@ const DATA_ROOT = path.resolve(ROOT, '..', 'benchmark', 'results', 'research_rep
 const OUT_DIR = path.join(ROOT, 'out', 'real-chat-demo');
 const PORT = Number(process.env.CHAT_DEMO_PORT || 8771);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const QUESTION = '最有性價比的向量資料庫是哪一個？請根據文件回答，並簡短說明你如何找到證據。';
+const QUESTION = '從性價比來看該選擇哪個向量資料庫?';
 
 const MODE = process.argv[2] || 'record';
 const REHEARSE = MODE === 'rehearse';
 const DISCOVER = MODE === 'discover';
+const CLEAN_UI = process.env.CLEAN_UI === '1';
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -117,6 +118,10 @@ async function injectSubtitleBar(page) {
 }
 
 async function showSubtitle(page, text, hold = 900) {
+  if (CLEAN_UI) {
+    if (text && hold) await page.waitForTimeout(Math.min(hold, 350));
+    return;
+  }
   await page.evaluate(t => {
     const bar = document.getElementById('demo-subtitle');
     if (!bar) return;
@@ -271,7 +276,7 @@ async function main() {
     const page = await context.newPage();
     await page.goto(`${BASE_URL}/chat.html`, { waitUntil: 'domcontentloaded' });
     await injectCursor(page);
-    await injectSubtitleBar(page);
+    if (!CLEAN_UI) await injectSubtitleBar(page);
     await page.waitForTimeout(1000);
 
     if (DISCOVER) {

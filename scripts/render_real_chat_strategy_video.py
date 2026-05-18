@@ -169,7 +169,8 @@ def status_tokens(status: str) -> tuple[int, int, int, int]:
     import re
 
     input_total = int(re.search(r"input ([\d,]+) tok", status).group(1).replace(",", ""))
-    uncached = int(re.search(r"\(([\d,]+) uncached", status).group(1).replace(",", ""))
+    uncached_match = re.search(r"\(([\d,]+) uncached", status)
+    uncached = int(uncached_match.group(1).replace(",", "")) if uncached_match else input_total
     output = int(re.search(r"output ([\d,]+) tok", status).group(1).replace(",", ""))
     total = int(re.search(r"total ([\d,]+) tok", status).group(1).replace(",", ""))
     return input_total, uncached, output, total
@@ -187,12 +188,19 @@ def extract_commands(report: dict) -> dict:
 def script_segments(report: dict) -> list[dict]:
     b_input, b_uncached, b_output, b_total = status_tokens(report["blocks"]["status"])
     p_input, p_uncached, p_output, p_total = status_tokens(report["plain"]["status"])
-    total_saved = round((1 - b_total / p_total) * 100, 1)
-    uncached_saved = round((1 - b_uncached / p_uncached) * 100, 1)
+    if b_total <= p_total:
+        total_compare = f"本次 Markdown plus 較省，少用約 {((1 - b_total / p_total) * 100):.1f}% total tokens。"
+    else:
+        total_compare = f"本次 Plain CLI 較省，少用約 {((1 - p_total / b_total) * 100):.1f}% total tokens。"
+    if b_uncached <= p_uncached:
+        uncached_compare = f"只看 uncached input，Markdown plus 也較低，少約 {((1 - b_uncached / p_uncached) * 100):.1f}%。"
+    else:
+        uncached_compare = f"只看 uncached input，Plain CLI 也較低，少約 {((1 - p_uncached / b_uncached) * 100):.1f}%。"
 
     return [
         {
             "id": "hook",
+            "style": "explain",
             "title": "真實查詢 UI：row 讀取 vs block 讀取",
             "tts": (
                 "這版影片改用真實 chat.html 操作錄影，不再只做抽象動畫。"
@@ -202,71 +210,89 @@ def script_segments(report: dict) -> list[dict]:
             "source": (0, 8),
         },
         {
-            "id": "setup",
-            "title": "兩個分頁，各自載入對應文件",
+            "id": "setup_operation",
+            "style": "operation",
+            "title": "乾淨操作：載入兩份文件",
             "tts": (
-                "畫面中 Markdown plus 分頁載入 markdown_plus.md，Plain CLI 分頁載入 markdown.md。"
-                "這次已依照你的批准，兩份文件會透過本機頁面與本機 API 送到 OpenAI，"
-                "目的只限於錄製真實查詢 UI 與工具調用流程。旁白合成則只送這段旁白稿，不送原始 research report 全文。"
+                "先看完整介面操作。這一段不加任何後製標題、卡片或字幕，"
+                "只保留真實 chat.html 畫面與滑鼠游標。Markdown plus 分頁載入 markdown_plus.md，"
+                "Plain CLI 分頁載入 markdown.md。"
             ),
             "source": (8, 18),
         },
         {
-            "id": "blocks_live",
-            "title": "Markdown+：先找 block，再讀 block",
+            "id": "setup",
+            "style": "explain",
+            "title": "操作完成後再補充載入設定",
             "tts": (
-                "先看 Markdown plus。實際工具卡顯示，它先呼叫 mdp_search_blocks，"
-                "搜尋詞是性價比與向量資料庫，並補上 vector database 等候選關鍵字。"
-                "搜尋結果直接回傳 block id、標題、行號與摘要，因此下一步不需要猜很大的行號範圍。"
+                "載入動作完成後，才出現說明標註。兩份文件各自留在對應分頁；"
+                "這次已依照你的批准，文件透過本機頁面與本機 API 送到 OpenAI，"
+                "用於錄製真實查詢 UI 與工具調用流程。旁白合成只送旁白稿，不送原始 research report 全文。"
+            ),
+            "source": (18, 18),
+        },
+        {
+            "id": "blocks_operation",
+            "style": "operation",
+            "title": "乾淨操作：Markdown+ 查詢",
+            "tts": (
+                "接著看 Markdown plus 分頁的查詢操作。這段仍然不遮擋畫面。"
+                "你可以直接看到送出問題、工具卡逐步出現，以及最後回答的 UI 狀態。"
             ),
             "source": (18, 37),
         },
         {
             "id": "blocks_analysis",
+            "style": "explain",
             "title": "Markdown+ 實際工具鏈",
             "tts": (
-                "接著它呼叫 mdp_read_block，讀取 core-conclusions 這個表格型 block，"
-                "並要求 include children 與最多二百二十行。"
-                "這個 block 內直接包含三種向量資料庫的延遲、成本、維運複雜度與適合團隊，"
-                "其中明確指出 Milvus 在成本與性能比上最具優勢。"
+                "操作完成後再看標註。實際工具卡顯示，Markdown plus 先呼叫 mdp_search_blocks，"
+                "用性價比、向量資料庫，以及 vector database 這類關鍵字找候選 block。"
+                "接著它讀 summary，連同 core-conclusions、cost-summary 等子區塊，"
+                "又讀了 Milvus、Weaviate、Pinecone 三個 overview block。"
+                "也就是說，這輪 Markdown plus 能找到答案，但策略偏保守，讀了比必要更多的比較背景。"
             ),
             "source": (35, 35),
         },
         {
-            "id": "plain_live",
-            "title": "Plain CLI：模型自己下 bash",
+            "id": "plain_operation",
+            "style": "operation",
+            "title": "乾淨操作：Plain CLI 查詢",
             "tts": (
-                "再看 Plain CLI。這裡不是另外開發 plain_read_lines 或 plain_search，"
-                "而是讓模型在真實限制下自己下 bash。"
-                "實際第一步是 grep 多組關鍵字，包含性價比、向量資料庫、Milvus、Weaviate、Pinecone、成本與 cost，"
-                "再用 head 限制最多二百筆候選。"
+                "再看 Plain CLI 分頁。這段同樣只看操作，不加遮擋物。"
+                "模型在真實限制下自己下 bash，工具卡會展示它實際送出的命令和回傳結果。"
             ),
             "source": (39, 58),
         },
         {
             "id": "plain_analysis",
+            "style": "explain",
             "title": "Plain CLI 實際搜尋策略",
             "tts": (
-                "Plain CLI 後續又跑了兩次 nl 加 sed。"
-                "第一次讀二五二八到二五七零行附近，找到結論摘要與推薦決策；"
-                "第二次回頭讀八十三到九十九行，確認成本表與總結句。"
-                "這代表 row 讀取不是只看前 N 行，但模型必須自行規劃下一段要讀哪裡。"
+                "Plain CLI 操作完成後再補說明。這裡不是另外開發 plain_read_lines 或 plain_search，"
+                "而是讓模型自己下 bash。這輪它先用 grep 搜尋 vector、向量、性價比、cost、price、performance 等關鍵字，"
+                "很快在文件前段找到成本表。"
+                "第二步嘗試用 sed 讀兩段行號，其中一段命令在 fallback 中有 printf 限制警告；"
+                "第三步改用 python3 heredoc 把指定行號區間印出來。"
+                "也就是說，row 讀取不是只看前 N 行的硬限制；模型會自己組合搜尋、行號閱讀與替代命令。"
             ),
             "source": (58, 66),
         },
         {
             "id": "token_compare",
+            "style": "explain",
             "title": "這一次哪邊 token 較省？",
             "tts": (
                 f"以頁面查詢後顯示的 usage 來看，Markdown plus 這題 total 是 {b_total:,} tokens，"
-                f"Plain CLI 是 {p_total:,} tokens。換算下來，Markdown plus 少用約 {total_saved}%。"
+                f"Plain CLI 是 {p_total:,} tokens。{total_compare}"
                 f"如果只看 uncached input，Markdown plus 是 {b_uncached:,}，Plain CLI 是 {p_uncached:,}，"
-                f"也少了約 {uncached_saved}%。"
+                f"{uncached_compare}"
             ),
             "source": (66, 66),
         },
         {
             "id": "strategy_compare",
+            "style": "explain",
             "title": "差異不在工具名字，而在上下文邊界",
             "tts": (
                 "兩邊其實都有工具定義，也都會有工具呼叫和工具結果。"
@@ -278,6 +304,7 @@ def script_segments(report: dict) -> list[dict]:
         },
         {
             "id": "answer",
+            "style": "explain",
             "title": "測試題答案只是驗證路徑",
             "tts": (
                 "這題最後兩邊都回答 Milvus。"
@@ -289,12 +316,14 @@ def script_segments(report: dict) -> list[dict]:
         },
         {
             "id": "closing",
+            "style": "explain",
             "title": "結論",
             "tts": (
                 "結論是，這次真實 UI 查詢中，Markdown plus 以 block 搜尋加 block 讀取完成定位，"
                 "Plain CLI 則以 grep 加行號範圍閱讀完成定位。"
-                "兩者都能答對，但 Markdown plus 的查詢後 total token 明顯較低。"
-                "因此影片要強調的是機制差異與 token 成本，而不是那個向量資料庫答案本身。"
+                "兩者都能答對，但實際 token 成本會受到搜尋策略影響。"
+                "這次 Markdown plus 多讀了幾個 overview block，因此不應該硬說它必然較省。"
+                "影片要強調的是機制差異、工具策略與可觀察的 token 成本，而不是那個向量資料庫答案本身。"
             ),
             "source": (66, 70),
         },
@@ -307,7 +336,14 @@ def synthesize_tts(segments: list[dict]) -> list[Path]:
     paths: list[Path] = []
     for idx, segment in enumerate(segments, start=1):
         out = SEGMENT_DIR / f"real_{idx:02d}_{segment['id']}.mp3"
-        if not out.is_file() or out.stat().st_size == 0:
+        text_marker = out.with_suffix(".txt")
+        needs_regen = (
+            not out.is_file()
+            or out.stat().st_size == 0
+            or not text_marker.is_file()
+            or text_marker.read_text(encoding="utf-8") != segment["tts"]
+        )
+        if needs_regen:
             response = client.audio.speech.create(
                 model=MODEL,
                 voice=VOICE,
@@ -319,6 +355,7 @@ def synthesize_tts(segments: list[dict]) -> list[Path]:
                 ),
             )
             out.write_bytes(response.read())
+            text_marker.write_text(segment["tts"], encoding="utf-8")
         paths.append(out)
     return paths
 
@@ -365,6 +402,9 @@ def render_scene_frame(frames: VideoFrames, report: dict, segment: dict, local_t
         src_time = src_start
     img = frames.frame(src_time)
     progress = local_t / max(duration, 0.01)
+
+    if segment.get("style") == "operation":
+        return img
 
     if segment["id"] == "hook":
         img = darken(img, 92).convert("RGBA")
@@ -438,8 +478,13 @@ def render_scene_frame(frames: VideoFrames, report: dict, segment: dict, local_t
         draw_token_chart(draw, report, 134, 270, 930)
         b_input, b_uncached, b_output, b_total = status_tokens(report["blocks"]["status"])
         p_input, p_uncached, p_output, p_total = status_tokens(report["plain"]["status"])
-        saved = (1 - b_total / p_total) * 100
-        draw.text((134, 502), f"Markdown+ total 少用約 {saved:.1f}%", font=F["h1"], fill=GREEN)
+        if b_total <= p_total:
+            saved_text = f"本次 Markdown+ total 少用約 {(1 - b_total / p_total) * 100:.1f}%"
+            saved_color = GREEN
+        else:
+            saved_text = f"本次 Plain CLI total 少用約 {(1 - p_total / b_total) * 100:.1f}%"
+            saved_color = ORANGE
+        draw.text((134, 502), saved_text, font=F["h1"], fill=saved_color)
         draw.text((134, 556), "注意：這是本頁 query 顯示的 usage，含 cached / uncached 拆分。", font=F["body"], fill=MUTED)
         rgba = blurred
 
