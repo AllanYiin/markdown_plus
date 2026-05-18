@@ -952,35 +952,42 @@ body {
     }
   }
 
-  // ---- Rendering helpers (all scoped to the active mode's panel) ----
+  // ---- Rendering helpers (scoped to an explicit mode when streaming) ----
   function getMode() { return MODES[currentMode]; }
 
-  function clearPlaceholder() {
-    const ph = getMode().messagesEl.querySelector(".placeholder-card");
+  function getRenderMode(mode) {
+    return MODES[mode] || getMode();
+  }
+
+  function clearPlaceholder(mode = currentMode) {
+    const ph = getRenderMode(mode).messagesEl.querySelector(".placeholder-card");
     if (ph) ph.remove();
   }
 
-  function addUserMessage(text) {
-    clearPlaceholder();
+  function addUserMessage(text, mode = currentMode) {
+    const m = getRenderMode(mode);
+    clearPlaceholder(mode);
     const wrap = document.createElement("div");
     wrap.className = "msg msg-user";
     wrap.innerHTML = `<div class="msg-role">U</div><div class="msg-body">${esc(text)}</div>`;
-    getMode().messagesEl.appendChild(wrap);
-    scrollToBottom();
+    m.messagesEl.appendChild(wrap);
+    scrollToBottom(mode);
   }
 
-  function addAssistantMessage() {
-    clearPlaceholder();
+  function addAssistantMessage(mode = currentMode) {
+    const m = getRenderMode(mode);
+    clearPlaceholder(mode);
     const wrap = document.createElement("div");
     wrap.className = "msg msg-assistant";
     wrap.innerHTML = `<div class="msg-role">AI</div><div class="msg-body"></div>`;
-    getMode().messagesEl.appendChild(wrap);
-    scrollToBottom();
+    m.messagesEl.appendChild(wrap);
+    scrollToBottom(mode);
     return wrap.querySelector(".msg-body");
   }
 
-  function addToolCallCard(name, args) {
-    clearPlaceholder();
+  function addToolCallCard(name, args, mode = currentMode) {
+    const m = getRenderMode(mode);
+    clearPlaceholder(mode);
     const argsInline = shortJsonInline(args);
     const det = document.createElement("details");
     det.className = "tool-card";
@@ -995,12 +1002,13 @@ body {
       </summary>
       <div class="tool-body">${formatPrettyJsonHtml(args)}</div>
     `;
-    getMode().messagesEl.appendChild(det);
-    scrollToBottom();
+    m.messagesEl.appendChild(det);
+    scrollToBottom(mode);
     return det;
   }
 
-  function addToolResultCard(name, result, ok) {
+  function addToolResultCard(name, result, ok, mode = currentMode) {
+    const m = getRenderMode(mode);
     const summary = ok
       ? (Array.isArray(result)
           ? `${result.length} items`
@@ -1019,13 +1027,13 @@ body {
       </summary>
       <div class="tool-body">${formatPrettyJsonHtml(result)}</div>
     `;
-    getMode().messagesEl.appendChild(det);
-    scrollToBottom();
+    m.messagesEl.appendChild(det);
+    scrollToBottom(mode);
     return det;
   }
 
-  function scrollToBottom() {
-    const m = getMode();
+  function scrollToBottom(mode = currentMode) {
+    const m = getRenderMode(mode);
     m.messagesEl.scrollTop = m.messagesEl.scrollHeight;
   }
 
@@ -1090,7 +1098,7 @@ body {
     const mode = currentMode;
     const m = MODES[mode];
 
-    addUserMessage(text);
+    addUserMessage(text, mode);
     m.history.push({ role: "user", content: text });
     chatInput.value = "";
     chatInput.disabled = true;
@@ -1155,10 +1163,10 @@ body {
           } else if (msg.type === "iteration") {
             localStatus(`iteration ${msg.n}…`, false);
           } else if (msg.type === "tool_call") {
-            addToolCallCard(msg.name, msg.args);
+            addToolCallCard(msg.name, msg.args, mode);
             localStatus(`呼叫 ${msg.name}…`, false);
           } else if (msg.type === "tool_result") {
-            addToolResultCard(msg.name || "", msg.result, !!msg.ok);
+            addToolResultCard(msg.name || "", msg.result, !!msg.ok, mode);
           } else if (msg.type === "delta") {
             if (!assistantBody) {
               const wrap = document.createElement("div");
