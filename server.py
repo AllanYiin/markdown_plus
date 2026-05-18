@@ -53,8 +53,11 @@ Endpoints:
 """
 from __future__ import annotations
 
+import ast
+import contextlib
 import copy
 import inspect
+import io
 import json
 import os
 import re
@@ -63,6 +66,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -116,7 +120,8 @@ _PLAIN_BASH_TOOL: dict = {
     "description": (
         "Run a read-only bash command in a temporary directory containing "
         "document.md. Use normal CLI tools such as grep -n, sed -n, awk, "
-        "head, tail, wc, and nl -ba to inspect the plain Markdown file."
+        "head, tail, wc, nl -ba, or a small read-only python3 heredoc to "
+        "inspect the plain Markdown file."
     ),
     "parameters": {
         "type": "object",
@@ -126,7 +131,8 @@ _PLAIN_BASH_TOOL: dict = {
                 "description": (
                     "Bash command to run. The file is available as document.md "
                     "and as $DOC_PATH. Prefer read-only commands; do not write "
-                    "files or access the network."
+                    "files or access the network. Python heredocs may only read "
+                    "document.md and print derived output."
                 ),
             }
         },
@@ -428,6 +434,190 @@ def _split_pipeline(statement: str) -> list[str]:
     return segments
 
 
+_PYTHON_HEREDOC_RE = re.compile(
+    r"^\s*(?:python3?|py)\s+-\s+<<(?P<quote>['\"]?)(?P<tag>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?P=quote)\s*\r?\n(?P<code>[\s\S]*?)\r?\n(?P=tag)\s*$"
+)
+
+_PYTHON_DENY_NAMES = {
+    "__import__", "breakpoint", "compile", "delattr", "dir", "eval", "exec",
+    "getattr", "globals", "help", "input", "locals", "open", "setattr",
+    "type", "vars",
+}
+
+_PYTHON_DENY_PATH_METHODS = {
+    "chmod", "hardlink_to", "mkdir", "open", "rename", "replace", "rmdir",
+    "symlink_to", "touch", "unlink", "write_bytes", "write_text",
+}
+
+_PYTHON_ALLOWED_BUILTINS = {
+    "abs": abs,
+    "all": all,
+    "any": any,
+    "bool": bool,
+    "dict": dict,
+    "enumerate": enumerate,
+    "float": float,
+    "int": int,
+    "len": len,
+    "list": list,
+    "max": max,
+    "min": min,
+    "print": print,
+    "range": range,
+    "repr": repr,
+    "reversed": reversed,
+    "round": round,
+    "set": set,
+    "sorted": sorted,
+    "str": str,
+    "sum": sum,
+    "tuple": tuple,
+}
+
+
+class _ReadOnlyDocPath:
+    def __init__(self, value: object, doc_text: str):
+        normalized = str(value).replace("\\", "/").strip("\"'")
+        if normalized not in {"document.md", "./document.md", "$DOC_PATH", "${DOC_PATH}"}:
+            raise ValueError("read-only Python fallback may only open document.md")
+        self._doc_text = doc_text
+
+    def read_text(self, encoding: str = "utf-8", *args: object, **kwargs: object) -> str:
+        if encoding and encoding.lower().replace("_", "-") != "utf-8":
+            raise ValueError("read-only Python fallback supports only utf-8")
+        return self._doc_text
+
+    def exists(self) -> bool:
+        return True
+
+    def is_file(self) -> bool:
+        return True
+
+    @property
+    def name(self) -> str:
+        return "document.md"
+
+    def __str__(self) -> str:
+        return "document.md"
+
+
+class _PlainPythonValidator(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.error: str | None = None
+
+    def fail(self, message: str) -> None:
+        if self.error is None:
+            self.error = message
+
+    def visit_Import(self, node: ast.Import) -> None:  # noqa: N802
+        allowed = {"re", "math", "statistics", "collections", "itertools"}
+        for alias in node.names:
+            if alias.name.split(".", 1)[0] not in allowed:
+                self.fail(f"import not allowed in read-only Python fallback: {alias.name}")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+        if node.module != "pathlib" or any(alias.name != "Path" for alias in node.names):
+            self.fail("read-only Python fallback only allows: from pathlib import Path")
+        self.generic_visit(node)
+
+    def visit_Name(self, node: ast.Name) -> None:  # noqa: N802
+        if node.id.startswith("__") or node.id in _PYTHON_DENY_NAMES:
+            self.fail(f"name not allowed in read-only Python fallback: {node.id}")
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: N802
+        if node.attr.startswith("__") or node.attr in _PYTHON_DENY_PATH_METHODS:
+            self.fail(f"attribute not allowed in read-only Python fallback: {node.attr}")
+        self.generic_visit(node)
+
+    def visit_While(self, node: ast.While) -> None:  # noqa: N802
+        self.fail("while loops are not allowed in read-only Python fallback")
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        self.fail("function definitions are not allowed in read-only Python fallback")
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+        self.fail("function definitions are not allowed in read-only Python fallback")
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        self.fail("class definitions are not allowed in read-only Python fallback")
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:  # noqa: N802
+        self.fail("lambda is not allowed in read-only Python fallback")
+
+
+def _extract_python_heredoc(command: str) -> str | None:
+    m = _PYTHON_HEREDOC_RE.match(command)
+    return m.group("code") if m else None
+
+
+def _execute_readonly_python_heredoc(command: str, source_doc_path: Path) -> object | None:
+    code = _extract_python_heredoc(command)
+    if code is None:
+        return None
+    doc_text = source_doc_path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(code, filename="<plain-cli-python>", mode="exec")
+    except SyntaxError as e:
+        return {
+            "command": command,
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": f"SyntaxError: {e}",
+            "truncated": False,
+            "fallback": "python-readonly-heredoc",
+        }
+
+    validator = _PlainPythonValidator()
+    validator.visit(tree)
+    if validator.error:
+        return {
+            "command": command,
+            "exit_code": 2,
+            "stdout": "",
+            "stderr": validator.error,
+            "truncated": False,
+            "fallback": "python-readonly-heredoc",
+        }
+
+    def limited_import(name: str, globals_: object = None, locals_: object = None,
+                       fromlist: tuple[str, ...] = (), level: int = 0) -> object:
+        root_name = name.split(".", 1)[0]
+        if name == "pathlib":
+            return types.SimpleNamespace(Path=lambda value="document.md": _ReadOnlyDocPath(value, doc_text))
+        if root_name in {"re", "math", "statistics", "collections", "itertools"}:
+            return __import__(name, globals_, locals_, fromlist, level)
+        raise ImportError(f"import not allowed: {name}")
+
+    builtins = dict(_PYTHON_ALLOWED_BUILTINS)
+    builtins["__import__"] = limited_import
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    globals_dict: dict[str, object] = {
+        "__builtins__": builtins,
+        "__name__": "__plain_cli_python__",
+    }
+    try:
+        with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+            exec(compile(tree, "<plain-cli-python>", "exec"), globals_dict, globals_dict)
+        exit_code = 0
+    except Exception as e:  # noqa: BLE001
+        exit_code = 1
+        print(f"{type(e).__name__}: {e}", file=stderr_buf)
+
+    stdout, out_trunc = _limit_tool_text(stdout_buf.getvalue())
+    stderr, err_trunc = _limit_tool_text(stderr_buf.getvalue())
+    return {
+        "command": command,
+        "exit_code": exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "truncated": out_trunc or err_trunc,
+        "fallback": "python-readonly-heredoc",
+    }
+
+
 def _execute_plain_cli_fallback(command: str, source_doc_path: Path) -> object:
     """Interpret a small read-only bash subset for Windows/no-bash environments.
 
@@ -495,12 +685,15 @@ def _execute_plain_bash(raw_args: dict, source_doc_path: Path) -> object:
         return {"error": "missing command"}
     if len(command) > 1000:
         return {"error": "command too long; keep it under 1000 chars"}
+    python_heredoc_result = _execute_readonly_python_heredoc(command, source_doc_path)
+    if python_heredoc_result is not None:
+        return python_heredoc_result
     if _BASH_DENY_RE.search(command):
         return {
             "error": (
                 "command rejected by read-only guard; use grep/sed/awk/head/"
-                "tail/wc/nl against document.md without redirection, network, "
-                "or file mutation"
+                "tail/wc/nl or a read-only python3 heredoc against document.md "
+                "without network or file mutation"
             )
         }
     bash = shutil.which("bash")
@@ -1055,9 +1248,11 @@ class Handler(SimpleHTTPRequestHandler):
                     "containing document.md, also available as $DOC_PATH. "
                     "Use real bash text-inspection commands such as grep -n, "
                     "sed -n '120,180p' document.md, awk, head, tail, wc -l, "
-                    "and nl -ba document.md. Do not use Markdown+ block ids "
-                    "or mdp_* assumptions. Do not modify files or access the "
-                    "network. Cite line numbers or command evidence when useful."
+                    "nl -ba document.md, or a small read-only python3 heredoc "
+                    "that only reads document.md and prints findings. Do not "
+                    "use Markdown+ block ids or mdp_* assumptions. Do not modify "
+                    "files or access the network. Cite line numbers or command "
+                    "evidence when useful."
                 )
                 # Build `input` based on whether we're chaining. With
                 # previous_response_id, prior input/output items are part of
