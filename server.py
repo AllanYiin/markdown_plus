@@ -221,6 +221,9 @@ def _run_plain_cli_segment(segment: str, stdin_lines: list[str] | None, doc_line
     args = argv[1:]
     source, args = _plain_cli_source(args, stdin_lines, doc_lines)
 
+    if cmd == "echo":
+        return 0, [" ".join(args)], ""
+
     if cmd == "cat":
         if args:
             return 2, [], "cat fallback only supports document.md or piped input"
@@ -279,15 +282,19 @@ def _run_plain_cli_segment(segment: str, stdin_lines: list[str] | None, doc_line
     if cmd == "grep":
         show_numbers = False
         ignore_case = False
+        extended_regex = False
         rest: list[str] = []
         for a in args:
             if a == "-n":
                 show_numbers = True
             elif a == "-i":
                 ignore_case = True
-            elif a.startswith("-") and set(a[1:]).issubset({"n", "i"}):
+            elif a == "-E":
+                extended_regex = True
+            elif a.startswith("-") and set(a[1:]).issubset({"n", "i", "E"}):
                 show_numbers = show_numbers or "n" in a
                 ignore_case = ignore_case or "i" in a
+                extended_regex = extended_regex or "E" in a
             else:
                 rest.append(a)
         if not rest:
@@ -296,11 +303,17 @@ def _run_plain_cli_segment(segment: str, stdin_lines: list[str] | None, doc_line
         extra = _strip_doc_args(rest[1:])
         if extra:
             return 2, [], "grep fallback supports one pattern and document.md"
-        needle = pattern.lower() if ignore_case else pattern
+        flags = re.IGNORECASE if ignore_case else 0
+        try:
+            regex = re.compile(pattern, flags) if extended_regex else None
+        except re.error as e:
+            return 2, [], f"grep: invalid regex: {e}"
+        needle = pattern.lower() if ignore_case and not regex else pattern
         out: list[str] = []
         for i, line in enumerate(source, start=1):
-            hay = line.lower() if ignore_case else line
-            if needle in hay:
+            hay = line.lower() if ignore_case and not regex else line
+            matched = bool(regex.search(line)) if regex else needle in hay
+            if matched:
                 out.append(f"{i}:{line}" if show_numbers else line)
         return (0 if out else 1), out, ""
 
@@ -325,32 +338,149 @@ def _run_plain_cli_segment(segment: str, stdin_lines: list[str] | None, doc_line
     return 127, [], f"unsupported fallback command: {cmd}"
 
 
+def _split_into_statements(command: str) -> list[tuple[str | None, str]]:
+    """Split a command line into statements joined by &&/||/; while respecting
+    quotes and backslash escapes. Returns [(separator_to_previous, statement)].
+    The first statement's separator is None. Single `|` (pipe) is left inside
+    statements — the pipeline split happens later, per-statement."""
+    out: list[tuple[str | None, str]] = []
+    buf = ""
+    sep: str | None = None
+    i = 0
+    in_quote: str | None = None
+    n = len(command)
+    while i < n:
+        c = command[i]
+        if in_quote:
+            buf += c
+            if c == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            in_quote = c
+            buf += c
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            buf += command[i:i + 2]
+            i += 2
+            continue
+        if c == ";":
+            out.append((sep, buf.strip()))
+            buf = ""
+            sep = ";"
+            i += 1
+            continue
+        if c == "&" and i + 1 < n and command[i + 1] == "&":
+            out.append((sep, buf.strip()))
+            buf = ""
+            sep = "&&"
+            i += 2
+            continue
+        if c == "|" and i + 1 < n and command[i + 1] == "|":
+            out.append((sep, buf.strip()))
+            buf = ""
+            sep = "||"
+            i += 2
+            continue
+        buf += c
+        i += 1
+    if buf.strip() or sep:
+        out.append((sep, buf.strip()))
+    return [(s, stmt) for s, stmt in out if stmt or s in ("&&", "||", ";")]
+
+
+def _split_pipeline(statement: str) -> list[str]:
+    """Split a statement on top-level pipes while preserving quoted regex `|`."""
+    segments: list[str] = []
+    buf = ""
+    i = 0
+    in_quote: str | None = None
+    n = len(statement)
+    while i < n:
+        c = statement[i]
+        if in_quote:
+            buf += c
+            if c == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            in_quote = c
+            buf += c
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            buf += statement[i:i + 2]
+            i += 2
+            continue
+        if c == "|" and not (i + 1 < n and statement[i + 1] == "|"):
+            if buf.strip():
+                segments.append(buf.strip())
+            buf = ""
+            i += 1
+            continue
+        buf += c
+        i += 1
+    if buf.strip():
+        segments.append(buf.strip())
+    return segments
+
+
 def _execute_plain_cli_fallback(command: str, source_doc_path: Path) -> object:
-    """Interpret a small read-only bash subset for Windows/no-bash environments."""
+    """Interpret a small read-only bash subset for Windows/no-bash environments.
+
+    Supports statement chaining via `&&`, `||`, `;` at the top level (control
+    flow follows bash conventions: `&&` runs only on success, `||` only on
+    failure, `;` always). Within each statement, `|` still chains commands as
+    a pipeline. Quoting/escaping is honored when splitting statements so a
+    literal `&&` inside quotes is preserved as part of an argument."""
     doc_lines = source_doc_path.read_text(encoding="utf-8").splitlines()
-    segments = [s.strip() for s in command.split("|") if s.strip()]
-    if not segments:
+    statements = _split_into_statements(command)
+    if not statements:
         return {"error": "empty command"}
 
-    stdin_lines: list[str] | None = None
-    exit_code = 0
-    stderr_parts: list[str] = []
-    for segment in segments:
-        exit_code, stdin_lines, stderr = _run_plain_cli_segment(segment, stdin_lines, doc_lines)
-        if stderr:
-            stderr_parts.append(stderr)
-        if exit_code not in (0, 1):
-            break
+    last_exit = 0
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    for sep, statement in statements:
+        # Bash short-circuit semantics for the operator joining this statement
+        # to whatever ran before it.
+        if sep == "&&" and last_exit != 0:
+            continue
+        if sep == "||" and last_exit == 0:
+            continue
+        if not statement:
+            continue
 
-    stdout_raw = "\n".join(stdin_lines or [])
+        segments = _split_pipeline(statement)
+        if not segments:
+            continue
+
+        stdin_lines: list[str] | None = None
+        exit_code = 0
+        for segment in segments:
+            exit_code, stdin_lines, stderr = _run_plain_cli_segment(segment, stdin_lines, doc_lines)
+            if stderr:
+                stderr_chunks.append(stderr)
+            if exit_code not in (0, 1):
+                break
+
+        stmt_out = "\n".join(stdin_lines or [])
+        if stmt_out:
+            stdout_chunks.append(stmt_out)
+        last_exit = exit_code
+
+    stdout_raw = "\n".join(stdout_chunks)
     if stdout_raw:
         stdout_raw += "\n"
-    stderr_raw = "\n".join(stderr_parts)
+    stderr_raw = "\n".join(stderr_chunks)
     stdout, out_trunc = _limit_tool_text(stdout_raw)
     stderr, err_trunc = _limit_tool_text(stderr_raw)
     return {
         "command": command,
-        "exit_code": exit_code,
+        "exit_code": last_exit,
         "stdout": stdout,
         "stderr": stderr,
         "truncated": out_trunc or err_trunc,
